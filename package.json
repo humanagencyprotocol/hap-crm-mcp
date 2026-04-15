@@ -2,6 +2,11 @@
   "name": "@humanagencyp/crm-mcp",
   "version": "1.0.1",
   "description": "CRM MCP server for the Human Agency Protocol — contacts, activities, deals, tasks",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/humanagencyprotocol/hap-crm-mcp.git"
+  },
   "type": "module",
   "main": "dist/index.js",
   "bin": {
