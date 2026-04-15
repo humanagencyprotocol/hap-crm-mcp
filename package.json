@@ -1,10 +1,12 @@
 {
   "name": "@humanagencyp/crm-mcp",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "CRM MCP server for the Human Agency Protocol — contacts, activities, deals, tasks",
   "type": "module",
   "main": "dist/index.js",
-  "bin": { "crm-mcp": "dist/index.js" },
+  "bin": {
+    "crm-mcp": "dist/index.js"
+  },
   "scripts": {
     "build": "tsup src/index.ts --format esm --dts --clean",
     "dev": "tsx src/index.ts",
@@ -24,7 +26,9 @@
     "pg": "^8.0.0"
   },
   "peerDependenciesMeta": {
-    "pg": { "optional": true }
+    "pg": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.0",
