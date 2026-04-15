@@ -160,8 +160,10 @@ export async function createDb(): Promise<Db> {
     return createPostgresDb(databaseUrl);
   }
 
-  // SQLite path
-  const hapDir = join(homedir(), ".hap");
+  // SQLite path — honor HAP_DATA_DIR so docker (with a mounted /app/data) and
+  // local dev (~/.hap) write to the same place the gateway uses. The gateway
+  // injects HAP_DATA_DIR into the child env when spawning this MCP server.
+  const hapDir = process.env.HAP_DATA_DIR ?? join(homedir(), ".hap");
   if (!existsSync(hapDir)) {
     mkdirSync(hapDir, { recursive: true });
   }
