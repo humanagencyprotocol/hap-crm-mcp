@@ -30,13 +30,15 @@ function parseContact(row: Contact) {
 }
 
 export async function create_contact(db: Db, args: Record<string, any>) {
-  const { name, email, phone, company, role, type, stage, tags, notes } = args;
+  // receipt_id: the Suveren receipt that authorized this write (Content
+  // Provenance §4.1). Injected by the gateway; absent on direct calls.
+  const { name, email, phone, company, role, type, stage, tags, notes, receipt_id } = args;
   const id = uuidv4();
   const tagsJson = JSON.stringify(tags ?? []);
 
   await db.run(
-    `INSERT INTO contacts (id, name, email, phone, company, role, type, stage, tags, notes)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO contacts (id, name, email, phone, company, role, type, stage, tags, notes, receipt_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id,
       name,
@@ -48,6 +50,7 @@ export async function create_contact(db: Db, args: Record<string, any>) {
       stage ?? "new",
       tagsJson,
       notes ?? null,
+      receipt_id ?? null,
     ]
   );
 
@@ -91,7 +94,7 @@ export async function find_contacts(db: Db, args: Record<string, any>) {
 export async function update_contact(db: Db, args: Record<string, any>) {
   const { id, ...fields } = args;
 
-  const updatable = ["name", "email", "phone", "company", "role", "type", "stage", "tags", "notes"];
+  const updatable = ["name", "email", "phone", "company", "role", "type", "stage", "tags", "notes", "receipt_id"];
   const setClauses: string[] = [];
   const params: any[] = [];
 

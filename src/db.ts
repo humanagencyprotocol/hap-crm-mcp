@@ -22,7 +22,8 @@ CREATE TABLE IF NOT EXISTS contacts (
   tags TEXT DEFAULT '[]',
   notes TEXT,
   created_at TEXT DEFAULT (datetime('now')),
-  updated_at TEXT DEFAULT (datetime('now'))
+  updated_at TEXT DEFAULT (datetime('now')),
+  receipt_id TEXT
 );
 
 CREATE TABLE IF NOT EXISTS activities (
@@ -32,7 +33,8 @@ CREATE TABLE IF NOT EXISTS activities (
   summary TEXT NOT NULL,
   detail TEXT,
   date TEXT DEFAULT (datetime('now')),
-  created_by TEXT
+  created_by TEXT,
+  receipt_id TEXT
 );
 
 CREATE TABLE IF NOT EXISTS deals (
@@ -45,7 +47,8 @@ CREATE TABLE IF NOT EXISTS deals (
   expected_close TEXT,
   notes TEXT,
   created_at TEXT DEFAULT (datetime('now')),
-  updated_at TEXT DEFAULT (datetime('now'))
+  updated_at TEXT DEFAULT (datetime('now')),
+  receipt_id TEXT
 );
 
 CREATE TABLE IF NOT EXISTS tasks (
@@ -56,9 +59,13 @@ CREATE TABLE IF NOT EXISTS tasks (
   due_date TEXT,
   status TEXT CHECK(status IN ('open','done')) DEFAULT 'open',
   assigned_to TEXT,
-  created_at TEXT DEFAULT (datetime('now'))
+  created_at TEXT DEFAULT (datetime('now')),
+  receipt_id TEXT
 );
 `;
+
+/** Tables that carry an authorizing receipt_id (Content Provenance §4.1). */
+const RECEIPT_ID_TABLES = ["contacts", "activities", "deals", "tasks"];
 
 // SQLite adapter using better-sqlite3 (synchronous API wrapped in async)
 async function createSqliteDb(dbPath: string): Promise<Db> {
@@ -67,6 +74,15 @@ async function createSqliteDb(dbPath: string): Promise<Db> {
   const db = new Database(dbPath);
   db.pragma("foreign_keys = ON");
   db.exec(SCHEMA);
+
+  // Migration: add receipt_id to pre-existing tables (Content Provenance §4.1).
+  // ALTER ... ADD COLUMN throws if it already exists, so guard on table_info.
+  for (const table of RECEIPT_ID_TABLES) {
+    const cols = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+    if (!cols.some((c) => c.name === "receipt_id")) {
+      db.exec(`ALTER TABLE ${table} ADD COLUMN receipt_id TEXT`);
+    }
+  }
 
   return {
     async run(sql: string, params: any[] = []): Promise<void> {
@@ -112,6 +128,10 @@ async function createPostgresDb(connectionString: string): Promise<Db> {
   const client = await pool.connect();
   try {
     await client.query(pgSchema);
+    // Migration: add receipt_id to pre-existing tables (Content Provenance §4.1).
+    for (const table of RECEIPT_ID_TABLES) {
+      await client.query(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS receipt_id TEXT`);
+    }
   } finally {
     client.release();
   }

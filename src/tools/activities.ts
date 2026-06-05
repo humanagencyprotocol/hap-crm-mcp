@@ -12,12 +12,13 @@ interface Activity {
 }
 
 export async function log_activity(db: Db, args: Record<string, any>) {
-  const { contact_id, type, summary, detail, date, created_by } = args;
+  // receipt_id: Suveren authorizing receipt (Content Provenance §4.1).
+  const { contact_id, type, summary, detail, date, created_by, receipt_id } = args;
   const id = uuidv4();
 
   await db.run(
-    `INSERT INTO activities (id, contact_id, type, summary, detail, date, created_by)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO activities (id, contact_id, type, summary, detail, date, created_by, receipt_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id,
       contact_id,
@@ -26,6 +27,7 @@ export async function log_activity(db: Db, args: Record<string, any>) {
       detail ?? null,
       date ?? new Date().toISOString(),
       created_by ?? null,
+      receipt_id ?? null,
     ]
   );
 

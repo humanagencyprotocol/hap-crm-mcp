@@ -13,12 +13,13 @@ interface Task {
 }
 
 export async function create_task(db: Db, args: Record<string, any>) {
-  const { title, contact_id, deal_id, due_date, assigned_to } = args;
+  // receipt_id: Suveren authorizing receipt (Content Provenance §4.1).
+  const { title, contact_id, deal_id, due_date, assigned_to, receipt_id } = args;
   const id = uuidv4();
 
   await db.run(
-    `INSERT INTO tasks (id, contact_id, deal_id, title, due_date, assigned_to)
-     VALUES (?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO tasks (id, contact_id, deal_id, title, due_date, assigned_to, receipt_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
     [
       id,
       contact_id ?? null,
@@ -26,6 +27,7 @@ export async function create_task(db: Db, args: Record<string, any>) {
       title,
       due_date ?? null,
       assigned_to ?? null,
+      receipt_id ?? null,
     ]
   );
 

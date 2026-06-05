@@ -15,12 +15,13 @@ interface Deal {
 }
 
 export async function create_deal(db: Db, args: Record<string, any>) {
-  const { contact_id, title, value, currency, stage, expected_close, notes } = args;
+  // receipt_id: Suveren authorizing receipt (Content Provenance §4.1).
+  const { contact_id, title, value, currency, stage, expected_close, notes, receipt_id } = args;
   const id = uuidv4();
 
   await db.run(
-    `INSERT INTO deals (id, contact_id, title, value, currency, stage, expected_close, notes)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO deals (id, contact_id, title, value, currency, stage, expected_close, notes, receipt_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id,
       contact_id,
@@ -30,6 +31,7 @@ export async function create_deal(db: Db, args: Record<string, any>) {
       stage ?? "lead",
       expected_close ?? null,
       notes ?? null,
+      receipt_id ?? null,
     ]
   );
 
@@ -40,7 +42,7 @@ export async function create_deal(db: Db, args: Record<string, any>) {
 export async function update_deal(db: Db, args: Record<string, any>) {
   const { id, ...fields } = args;
 
-  const updatable = ["title", "value", "currency", "stage", "expected_close", "notes"];
+  const updatable = ["title", "value", "currency", "stage", "expected_close", "notes", "receipt_id"];
   const setClauses: string[] = [];
   const params: any[] = [];
 
