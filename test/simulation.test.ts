@@ -174,7 +174,9 @@ describe("changes and refusals", () => {
     expect(await db.all(`SELECT * FROM changes`)).toHaveLength(0);
   });
 
-  it("records a change tool's call with receipt_id null when the tool's schema doesn't declare the field (delete_contact)", async () => {
+  it("records a change tool's call with receipt_id null when the caller omits it (delete_contact)", async () => {
+    // delete_contact's schema now declares receipt_id (additive) — this just
+    // exercises the caller not supplying it, same as any other optional field.
     await freshDb();
     const contact = (await callTool(db, "simulation", "create_contact", { name: "To Delete" })) as any;
     await callTool(db, "simulation", "delete_contact", { id: contact.id });
@@ -182,7 +184,9 @@ describe("changes and refusals", () => {
     expect(rows).toEqual([{ tool: "delete_contact", receipt_id: null, document_id: contact.id }]);
   });
 
-  it("records a change tool's call with receipt_id null when the tool's schema doesn't declare the field (complete_task)", async () => {
+  it("records a change tool's call with receipt_id null when the caller omits it (complete_task)", async () => {
+    // complete_task's schema now declares receipt_id (additive) — see
+    // load-simulation.test.ts for the case where the gateway DOES supply one.
     await freshDb();
     const task = (await callTool(db, "simulation", "create_task", { title: "Follow up", receipt_id: "t-task" })) as any;
     await callTool(db, "simulation", "complete_task", { id: task.id });

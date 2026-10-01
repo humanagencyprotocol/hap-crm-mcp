@@ -10,13 +10,13 @@ import { log_activity, get_timeline } from "./tools/activities.js";
 import { create_deal, update_deal, get_pipeline } from "./tools/deals.js";
 import { create_task, list_tasks, complete_task } from "./tools/tasks.js";
 import { export_crm } from "./tools/export.js";
+import { load_simulation } from "./tools/simulation.js";
 
 /**
  * Tools that change the CRM — the ones the gateway issues a ticket for (matches
- * the write overrides in the shipped `crm.json` manifest). Of these, the gateway
- * injects `receipt_id` into every tool's schema EXCEPT `delete_contact` and
- * `complete_task` — those two tools take only an `id`, by design, so a change
- * recorded for them carries receipt_id: null.
+ * the write overrides in the shipped `crm.json` manifest). All of these now
+ * carry `receipt_id` in their schema (see index.ts) and so get a non-null
+ * receipt_id in the change/refusal record when the gateway supplies one.
  */
 export const CHANGE_TOOLS = new Set([
   "create_contact",
@@ -27,6 +27,7 @@ export const CHANGE_TOOLS = new Set([
   "update_deal",
   "create_task",
   "complete_task",
+  "load_simulation",
 ]);
 
 async function runTool(db: Db, name: string, args: Record<string, any>): Promise<unknown> {
@@ -44,6 +45,7 @@ async function runTool(db: Db, name: string, args: Record<string, any>): Promise
     case "list_tasks": return list_tasks(db, args);
     case "complete_task": return complete_task(db, args);
     case "export_crm": return export_crm(db, args);
+    case "load_simulation": return load_simulation(db, args);
     default: throw new Error(`Unknown tool: ${name}`);
   }
 }
@@ -67,6 +69,8 @@ function describeChange(name: string, args: Record<string, any>, result: unknown
       return { documentId: (doc.id as string) ?? null, summary: `${doc.title ?? "?"}` };
     case "complete_task":
       return { documentId: typeof args.id === "string" ? args.id : null, summary: typeof doc.message === "string" ? doc.message : "completed" };
+    case "load_simulation":
+      return { documentId: null, summary: typeof doc.name === "string" ? doc.name : "" };
     default:
       return { documentId: (doc.id as string) ?? null, summary: "" };
   }
@@ -74,12 +78,11 @@ function describeChange(name: string, args: Record<string, any>, result: unknown
 
 /**
  * Run a tool in the given mode. Every successful change is recorded (`changes`)
- * with the receipt_id the gateway injected (null for the two change tools whose
- * schema does not declare it); a call the connector refuses AFTER the gateway let
- * it through is recorded in `refusals` with the same receipt_id — that is the
- * trace of a ticket whose action never happened. In live mode nothing runs and
- * nothing is recorded locally: there is no local system to have refused anything.
- * Reads record nothing either way.
+ * with the receipt_id the gateway injected; a call the connector refuses AFTER
+ * the gateway let it through is recorded in `refusals` with the same
+ * receipt_id — that is the trace of a ticket whose action never happened. In
+ * live mode nothing runs and nothing is recorded locally: there is no local
+ * system to have refused anything. Reads record nothing either way.
  */
 export async function callTool(db: Db, mode: CrmMode, name: string, args: Record<string, any>): Promise<unknown> {
   if (mode === "live") throw new Error(LIVE_NOT_AVAILABLE);

@@ -17,6 +17,7 @@ export async function exportRecord(db: Db, mode = getMode()) {
     activities: await db.all<any>(`SELECT * FROM activities ORDER BY date ASC`),
     changes: await db.all<any>(`SELECT * FROM changes ORDER BY at`),
     refusals: await db.all<any>(`SELECT * FROM refusals ORDER BY at`),
+    simulation_load: await db.all<any>(`SELECT * FROM simulation_load ORDER BY at`),
   };
 }
 

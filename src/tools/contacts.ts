@@ -123,6 +123,10 @@ export async function update_contact(db: Db, args: Record<string, any>) {
 }
 
 export async function delete_contact(db: Db, args: Record<string, any>) {
+  // receipt_id: Suveren authorizing receipt (Content Provenance §4.1). The
+  // schema now declares it (additive), but there is no row left to store it on
+  // after a delete — dispatch.ts's `changes` record (which reads args.receipt_id
+  // directly) is what carries it, same as every other write tool.
   const { id } = args;
 
   const row = await db.get<Contact>("SELECT id, name FROM contacts WHERE id = ?", [id]);

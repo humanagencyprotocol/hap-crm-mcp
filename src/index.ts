@@ -96,6 +96,7 @@ const TOOL_DEFINITIONS = [
       type: "object",
       properties: {
         id: { type: "string", description: "Contact ID" },
+        receipt_id: { type: "string", description: "Suveren authorizing receipt id. Injected by the gateway — agents do not set this." },
       },
       required: ["id"],
     },
@@ -243,6 +244,7 @@ const TOOL_DEFINITIONS = [
       type: "object",
       properties: {
         id: { type: "string", description: "Task ID" },
+        receipt_id: { type: "string", description: "Suveren authorizing receipt id. Injected by the gateway — agents do not set this." },
       },
       required: ["id"],
     },
@@ -256,6 +258,26 @@ const TOOL_DEFINITIONS = [
       type: "object",
       properties: {},
       required: [],
+    },
+  },
+
+  // --- Simulation setup ---
+  {
+    name: "load_simulation",
+    description:
+      "Simulation mode only: load a simulation package (name, currency, customers, optional contacts) into this " +
+      "connector's simulated CRM. Create only — refused if test data was already loaded, or if any contact, deal, " +
+      "task, or activity already exists. Not available in live mode.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        package: {
+          type: "object",
+          description: "Simulation package: { name, currency, customers: [...], contacts?: [...] }.",
+        },
+        receipt_id: { type: "string", description: "Suveren authorizing receipt id. Injected by the gateway — agents do not set this." },
+      },
+      required: ["package"],
     },
   },
 ] as const;
