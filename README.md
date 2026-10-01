@@ -119,29 +119,45 @@ optional top-level `contacts[]` extends that world with CRM-native records
 (leads, partners, vendors) the ERP has no concept of — `name`, `email`, `phone`,
 `company`, `role`, `type`, `stage`, `tags`, `notes`. The file is validated
 strictly and refused whole on the first problem, naming the field. Without a
-company file the database starts empty, as before. Example:
+company file the database starts empty, as before. **Still the way to go for
+local development** — loaded at connector start. Example:
 [`examples/company.example.json`](examples/company.example.json).
+
+**`load_simulation` (MCP tool).** The gateway-facing way to load test data: a
+simulation package — `{ name, currency, customers: [...], contacts?: [...] }`
+— passed as the `package` argument, in the same flat format the ERP connector
+and the email simulator use (each reads only the parts it needs; the ERP's
+`products`/`items` and the email simulator's `cases` are accepted and ignored
+here). Simulation mode only; refused in live mode like every other tool.
+**Create only, never edit** — refused once test data was already loaded, or
+any contact, deal, task, or activity already exists for any reason (including
+one seeded by `CRM_COMPANY_FILE`, since that did not come from an earlier
+load — the CRM has no demo seed to exempt the way the ERP does). Records the
+package's name and the SHA-256 of its canonical (key-order-independent) JSON
+in `simulation_load`. Example package:
+[`examples/package.example.json`](examples/package.example.json).
 
 **Changes.** Every successful call to a write tool (`create_contact`,
 `update_contact`, `delete_contact`, `log_activity`, `create_deal`,
-`update_deal`, `create_task`, `complete_task`) is recorded as its own entry in
-`changes` — time, tool, the affected document's id, a short summary, and the
-`receipt_id` the gateway injected. `delete_contact` and `complete_task` take
-only an `id` — the gateway has nothing to inject there — so their rows carry
-`receipt_id: null`. Reads record nothing.
+`update_deal`, `create_task`, `complete_task`, `load_simulation`) is recorded
+as its own entry in `changes` — time, tool, the affected document's id, a
+short summary, and the `receipt_id` the gateway injected. `delete_contact`
+and `complete_task` now declare `receipt_id` too (additive); `delete_contact`
+still has no surviving row to store it on, so only the change record carries
+it. Reads record nothing.
 
 **Refusals after the gateway.** When the connector refuses a write call the
 gateway already let through (unknown id, a bad state), it records the refusal
-in `refusals` with the `receipt_id` the gateway injected (or `null`, for the
-same two tools). A ticket then exists for an action that never happened, and
-this record is the only place that says so.
+in `refusals` with the `receipt_id` the gateway injected (or `null`, where no
+row survives to carry it). A ticket then exists for an action that never
+happened, and this record is the only place that says so.
 
 **Local command** (not an MCP tool — the agent can neither read nor change it).
 Point it at the same database the gateway uses — for a gateway install that is
 `HAP_DATA_DIR=~/.suveren`:
 
 ```bash
-HAP_DATA_DIR=~/.suveren crm-mcp export > record.json   # contacts, deals, tasks, activities, changes, refusals, mode
+HAP_DATA_DIR=~/.suveren crm-mcp export > record.json   # contacts, deals, tasks, activities, changes, refusals, simulation_load, mode
 ```
 
 ---
