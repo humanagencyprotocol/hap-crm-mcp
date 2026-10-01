@@ -8,11 +8,9 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 
 import { createDb } from "./db.js";
-import { create_contact, find_contacts, update_contact, delete_contact } from "./tools/contacts.js";
-import { log_activity, get_timeline } from "./tools/activities.js";
-import { create_deal, update_deal, get_pipeline } from "./tools/deals.js";
-import { create_task, list_tasks, complete_task } from "./tools/tasks.js";
-import { export_crm } from "./tools/export.js";
+import { callTool } from "./dispatch.js";
+import { getMode } from "./mode.js";
+import { runCli } from "./cli.js";
 
 const TOOL_DEFINITIONS = [
   // --- Contacts ---
@@ -262,10 +260,15 @@ const TOOL_DEFINITIONS = [
   },
 ] as const;
 
-type ToolName = (typeof TOOL_DEFINITIONS)[number]["name"];
-
 async function main() {
+  // `crm-mcp export` is a local operator command, not an MCP tool.
+  if (process.argv.length > 2) {
+    process.exit(await runCli(process.argv.slice(2)));
+  }
+
+  const mode = getMode();
   const db = await createDb();
+  console.error(`[crm-mcp] mode: ${mode}`);
 
   const server = new Server(
     { name: "crm", version: "1.0.0" },
@@ -281,51 +284,7 @@ async function main() {
     const safeArgs = (args ?? {}) as Record<string, any>;
 
     try {
-      let result: unknown;
-
-      switch (name as ToolName) {
-        case "create_contact":
-          result = await create_contact(db, safeArgs);
-          break;
-        case "find_contacts":
-          result = await find_contacts(db, safeArgs);
-          break;
-        case "update_contact":
-          result = await update_contact(db, safeArgs);
-          break;
-        case "delete_contact":
-          result = await delete_contact(db, safeArgs);
-          break;
-        case "log_activity":
-          result = await log_activity(db, safeArgs);
-          break;
-        case "get_timeline":
-          result = await get_timeline(db, safeArgs);
-          break;
-        case "create_deal":
-          result = await create_deal(db, safeArgs);
-          break;
-        case "update_deal":
-          result = await update_deal(db, safeArgs);
-          break;
-        case "get_pipeline":
-          result = await get_pipeline(db, safeArgs);
-          break;
-        case "create_task":
-          result = await create_task(db, safeArgs);
-          break;
-        case "list_tasks":
-          result = await list_tasks(db, safeArgs);
-          break;
-        case "complete_task":
-          result = await complete_task(db, safeArgs);
-          break;
-        case "export_crm":
-          result = await export_crm(db, safeArgs);
-          break;
-        default:
-          throw new Error(`Unknown tool: ${name}`);
-      }
+      const result = await callTool(db, mode, name, safeArgs);
 
       return {
         content: [

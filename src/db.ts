@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, copyFileSync, statSync } from "fs";
 import { homedir } from "os";
 import { join } from "path";
+import { loadCompanyFile, companyContacts, type Company } from "./company.js";
 
 export interface Db {
   run(sql: string, params?: any[]): Promise<void>;
@@ -62,18 +63,72 @@ CREATE TABLE IF NOT EXISTS tasks (
   created_at TEXT DEFAULT (datetime('now')),
   receipt_id TEXT
 );
+
+-- Calls the connector refused AFTER the gateway let them through. When the gateway
+-- injected a receipt_id, a ticket exists for an action that never happened; this
+-- table is the only place that says so (the ticket alone reads like a done action).
+CREATE TABLE IF NOT EXISTS refusals (
+  id TEXT PRIMARY KEY,
+  at TEXT NOT NULL,
+  tool TEXT NOT NULL,
+  receipt_id TEXT,
+  message TEXT NOT NULL
+);
+
+-- Every change the CRM performed, one row per call — the effect each ticket
+-- produced. A document's own receipt_id column holds only its latest ticket
+-- (e.g. update_contact overwrites create_contact's), so this table, not the
+-- document, is what lines up ticket <-> effect 1:1.
+CREATE TABLE IF NOT EXISTS changes (
+  id TEXT PRIMARY KEY,
+  at TEXT NOT NULL,
+  tool TEXT NOT NULL,
+  receipt_id TEXT,
+  document_id TEXT,
+  summary TEXT
+);
 `;
 
 /** Tables that carry an authorizing receipt_id (Content Provenance §4.1). */
 const RECEIPT_ID_TABLES = ["contacts", "activities", "deals", "tasks"];
 
+/** The company to seed from: CRM_COMPANY_FILE if set (refused whole if invalid), else none. */
+export function resolveCompany(env: NodeJS.ProcessEnv = process.env): Company | null {
+  const path = env.CRM_COMPANY_FILE?.trim();
+  return path ? loadCompanyFile(path) : null;
+}
+
+const INSERT_CONTACT = `INSERT INTO contacts (id, name, email, phone, company, role, type, stage, tags, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+
+function contactRows(company: Company): any[][] {
+  return companyContacts(company).map((ct) => [
+    ct.id, ct.name, ct.email, ct.phone, ct.company, ct.role, ct.type, ct.stage, JSON.stringify(ct.tags), ct.notes,
+  ]);
+}
+
+function seedSqlite(db: import("better-sqlite3").Database, company: Company | null): void {
+  if (!company) return;
+  const { count } = db.prepare("SELECT COUNT(*) as count FROM contacts").get() as { count: number };
+  if (count > 0) {
+    console.error("[crm-mcp] database already holds data — CRM_COMPANY_FILE not loaded (start from an empty database to load it)");
+    return;
+  }
+  const rows = contactRows(company);
+  const insert = db.prepare(INSERT_CONTACT);
+  db.transaction(() => {
+    for (const r of rows) insert.run(...r);
+  })();
+  console.error(`[crm-mcp] seeded "${company.name}": ${rows.length} contacts`);
+}
+
 // SQLite adapter using better-sqlite3 (synchronous API wrapped in async)
-async function createSqliteDb(dbPath: string): Promise<Db> {
+async function createSqliteDb(dbPath: string, company: Company | null): Promise<Db> {
   const { default: Database } = await import("better-sqlite3");
 
   const db = new Database(dbPath);
   db.pragma("foreign_keys = ON");
   db.exec(SCHEMA);
+  seedSqlite(db, company);
 
   // Migration: add receipt_id to pre-existing tables (Content Provenance §4.1).
   // ALTER ... ADD COLUMN throws if it already exists, so guard on table_info.
@@ -101,7 +156,7 @@ async function createSqliteDb(dbPath: string): Promise<Db> {
 }
 
 // Postgres adapter using pg Pool
-async function createPostgresDb(connectionString: string): Promise<Db> {
+async function createPostgresDb(connectionString: string, company: Company | null): Promise<Db> {
   const { default: pg } = await import("pg");
   const pool = new pg.Pool({ connectionString });
 
@@ -131,6 +186,16 @@ async function createPostgresDb(connectionString: string): Promise<Db> {
     // Migration: add receipt_id to pre-existing tables (Content Provenance §4.1).
     for (const table of RECEIPT_ID_TABLES) {
       await client.query(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS receipt_id TEXT`);
+    }
+    if (company) {
+      const { rows } = await client.query("SELECT COUNT(*)::int as count FROM contacts");
+      if (rows[0].count === 0) {
+        const seed = contactRows(company);
+        for (const r of seed) await client.query(adaptSql(INSERT_CONTACT), r);
+        console.error(`[crm-mcp] seeded "${company.name}": ${seed.length} contacts`);
+      } else {
+        console.error("[crm-mcp] database already holds data — CRM_COMPANY_FILE not loaded (start from an empty database to load it)");
+      }
     }
   } finally {
     client.release();
@@ -172,25 +237,27 @@ function maybeBackupSqlite(dbPath: string): void {
   }
 }
 
-export async function createDb(): Promise<Db> {
+export async function createDb(company: Company | null = resolveCompany()): Promise<Db> {
   const databaseUrl = process.env.DATABASE_URL ?? "";
 
   if (databaseUrl.startsWith("postgres://") || databaseUrl.startsWith("postgresql://")) {
     console.error("[crm-mcp] using Postgres");
-    return createPostgresDb(databaseUrl);
+    return createPostgresDb(databaseUrl, company);
   }
 
   // SQLite path — honor HAP_DATA_DIR so docker (with a mounted /app/data) and
   // local dev (~/.hap) write to the same place the gateway uses. The gateway
   // injects HAP_DATA_DIR into the child env when spawning this MCP server.
-  const hapDir = process.env.HAP_DATA_DIR ?? join(homedir(), ".hap");
-  if (!existsSync(hapDir)) {
-    mkdirSync(hapDir, { recursive: true });
+  // Only create the data directory when the default path is actually used — an
+  // explicit DATABASE_URL must not leave an empty ~/.hap behind.
+  let dbPath = databaseUrl;
+  if (!dbPath) {
+    const hapDir = process.env.HAP_DATA_DIR ?? join(homedir(), ".hap");
+    if (!existsSync(hapDir)) mkdirSync(hapDir, { recursive: true });
+    dbPath = join(hapDir, "crm.db");
   }
-
-  const dbPath = databaseUrl || join(hapDir, "crm.db");
   maybeBackupSqlite(dbPath);
 
   console.error(`[crm-mcp] using SQLite at ${dbPath}`);
-  return createSqliteDb(dbPath);
+  return createSqliteDb(dbPath, company);
 }
