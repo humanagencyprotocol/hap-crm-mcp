@@ -293,7 +293,7 @@ async function main() {
   console.error(`[crm-mcp] mode: ${mode}`);
 
   const server = new Server(
-    { name: "crm", version: "1.0.0" },
+    { name: "crm", version: "1.1.0" },
     { capabilities: { tools: {} } }
   );
 
