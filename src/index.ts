@@ -11,6 +11,7 @@ import { createDb } from "./db.js";
 import { callTool } from "./dispatch.js";
 import { getMode } from "./mode.js";
 import { runCli } from "./cli.js";
+import { SIMULATION_PACKAGE_SCHEMA } from "./simulation-package-schema.js";
 
 const TOOL_DEFINITIONS = [
   // --- Contacts ---
@@ -271,10 +272,7 @@ const TOOL_DEFINITIONS = [
     inputSchema: {
       type: "object",
       properties: {
-        package: {
-          type: "object",
-          description: "Simulation package: { name, currency, customers: [...], contacts?: [...] }.",
-        },
+        package: { ...SIMULATION_PACKAGE_SCHEMA, description: `${SIMULATION_PACKAGE_SCHEMA.description} This connector loads \`name\`, \`currency\`, \`customers\` (as contacts) and optional \`contacts\`; \`products\` and \`cases\` are used by the ERP and the email simulator.` },
         receipt_id: { type: "string", description: "Suveren authorizing receipt id. Injected by the gateway — agents do not set this." },
       },
       required: ["package"],
