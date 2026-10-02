@@ -93,6 +93,75 @@ Schema is created automatically on first start.
 
 ---
 
+## Simulation mode
+
+The connector has a switch, `CRM_MODE`:
+
+| Mode | What answers | Status |
+|---|---|---|
+| `simulation` (default) | the built-in simulated CRM (the database above) | available |
+| `live` | the company's real CRM | no adapter in 0.x — **every call is refused**, reads included, with a clear message; nothing is read or changed |
+
+The point: a three-week test runs on exactly this connector, its 13 tools and its
+HAP `customers` profile. Only the system behind it is simulated, so the tickets
+issued during the test are the same tickets that will be issued live. Going live
+= switch the mode and connect the real system; mandates and agent setup stay as
+they are. An unknown `CRM_MODE` value stops the server at start rather than
+guessing.
+
+**Company file.** `CRM_COMPANY_FILE=/path/to/company.json` seeds an empty
+database with contacts — one `customer`-type contact per entry in the file's
+`customers[]`. The format is the **same company file the ERP connector reads**
+(`name`, `currency`, `items`, `customers[...]`), so one file can describe the
+whole simulated world for a pilot that runs both connectors; the ERP's `items`
+are accepted and validated here for compatibility but otherwise unused. An
+optional top-level `contacts[]` extends that world with CRM-native records
+(leads, partners, vendors) the ERP has no concept of — `name`, `email`, `phone`,
+`company`, `role`, `type`, `stage`, `tags`, `notes`. The file is validated
+strictly and refused whole on the first problem, naming the field. Without a
+company file the database starts empty, as before. **Still the way to go for
+local development** — loaded at connector start. Example:
+[`examples/company.example.json`](examples/company.example.json).
+
+**`load_simulation` (MCP tool).** The gateway-facing way to load test data: a
+simulation package — `{ name, currency, customers: [...], contacts?: [...] }`
+— passed as the `package` argument, in the same flat format the ERP connector
+and the email simulator use (each reads only the parts it needs; the ERP's
+`products`/`items` and the email simulator's `cases` are accepted and ignored
+here). Simulation mode only; refused in live mode like every other tool.
+**Create only, never edit** — refused once test data was already loaded, or
+any contact, deal, task, or activity already exists for any reason (including
+one seeded by `CRM_COMPANY_FILE`, since that did not come from an earlier
+load — the CRM has no demo seed to exempt the way the ERP does). Records the
+package's name and the SHA-256 of its canonical (key-order-independent) JSON
+in `simulation_load`. Example package:
+[`examples/package.example.json`](examples/package.example.json).
+
+**Changes.** Every successful call to a write tool (`create_contact`,
+`update_contact`, `delete_contact`, `log_activity`, `create_deal`,
+`update_deal`, `create_task`, `complete_task`, `load_simulation`) is recorded
+as its own entry in `changes` — time, tool, the affected document's id, a
+short summary, and the `receipt_id` the gateway injected. `delete_contact`
+and `complete_task` now declare `receipt_id` too (additive); `delete_contact`
+still has no surviving row to store it on, so only the change record carries
+it. Reads record nothing.
+
+**Refusals after the gateway.** When the connector refuses a write call the
+gateway already let through (unknown id, a bad state), it records the refusal
+in `refusals` with the `receipt_id` the gateway injected (or `null`, where no
+row survives to carry it). A ticket then exists for an action that never
+happened, and this record is the only place that says so.
+
+**Local command** (not an MCP tool — the agent can neither read nor change it).
+Point it at the same database the gateway uses — for a gateway install that is
+`HAP_DATA_DIR=~/.suveren`:
+
+```bash
+HAP_DATA_DIR=~/.suveren crm-mcp export > record.json   # contacts, deals, tasks, activities, changes, refusals, simulation_load, mode
+```
+
+---
+
 ## HAP Profile
 
 This server is gated through the `customers` profile:
