@@ -81,6 +81,15 @@ DATABASE_URL=postgres://user:pass@host:5432/mydb npx @humanagencyp/crm-mcp@lates
 |------|-------------|
 | `export_crm` | Full JSON export of all contacts, activities, deals, tasks |
 
+### Test setup (simulation mode only)
+
+| Tool | Description |
+|------|-------------|
+| `load_simulation` | Load a simulation package into the empty CRM — create only |
+| `clear_simulation` | Delete all test data so a new package can be loaded |
+
+These two are not part of the work the agent is tested on; see [Simulation mode](#simulation-mode).
+
 ---
 
 ## Database
@@ -132,14 +141,22 @@ here). Simulation mode only; refused in live mode like every other tool.
 **Create only, never edit** — refused once test data was already loaded, or
 any contact, deal, task, or activity already exists for any reason (including
 one seeded by `CRM_COMPANY_FILE`, since that did not come from an earlier
-load — the CRM has no demo seed to exempt the way the ERP does). Records the
+load). Records the
 package's name and the SHA-256 of its canonical (key-order-independent) JSON
 in `simulation_load`. Example package:
 [`examples/package.example.json`](examples/package.example.json).
 
+**`clear_simulation` (MCP tool).** Deletes all test data — contacts, activities,
+deals, tasks, and the record of changes and refusals — so the same cases can run
+again under a different setup, or other cases under the same one: clear, then
+load. Simulation mode only; refused in live mode. The clear itself stays recorded
+as one change with its `receipt_id`; that entry does not block the next load.
+Cannot be undone — take an `export` first if you want to keep the record.
+
 **Changes.** Every successful call to a write tool (`create_contact`,
 `update_contact`, `delete_contact`, `log_activity`, `create_deal`,
-`update_deal`, `create_task`, `complete_task`, `load_simulation`) is recorded
+`update_deal`, `create_task`, `complete_task`, `load_simulation`,
+`clear_simulation`) is recorded
 as its own entry in `changes` — time, tool, the affected document's id, a
 short summary, and the `receipt_id` the gateway injected. `delete_contact`
 and `complete_task` now declare `receipt_id` too (additive); `delete_contact`

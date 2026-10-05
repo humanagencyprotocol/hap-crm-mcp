@@ -257,7 +257,7 @@ export const TOOL_DEFINITIONS = [
     description:
       "Simulation mode only: load a simulation package (name, currency, customers, optional contacts) into this " +
       "connector's simulated CRM. Create only — refused if test data was already loaded, or if any contact, deal, " +
-      "task, or activity already exists. Not available in live mode. " + SIMULATION_PACKAGE_GUIDE,
+      "task, or activity already exists; clear_simulation empties it first. Not available in live mode. " + SIMULATION_PACKAGE_GUIDE,
     inputSchema: {
       type: "object",
       properties: {
@@ -265,6 +265,20 @@ export const TOOL_DEFINITIONS = [
         receipt_id: { type: "string", description: "Authorization reference for this call, set by the governing gateway — agents do not set this." },
       },
       required: ["package"],
+    },
+  },
+  {
+    name: "clear_simulation",
+    description:
+      "Simulation mode only: delete all test data from this connector's simulated CRM — contacts, activities, deals, " +
+      "tasks, and the record of changes and refusals — so a new package can be loaded with load_simulation. " +
+      "Cannot be undone. Not available in live mode.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        receipt_id: { type: "string", description: "Authorization reference for this call, set by the governing gateway — agents do not set this." },
+      },
+      required: [],
     },
   },
 ] as const;

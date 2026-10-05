@@ -6,6 +6,10 @@
  * which is not "from an earlier load" either) — so the three-week test always
  * starts from the package that was actually loaded.
  *
+ * `clear_simulation` deletes all of it, the record of changes and refusals
+ * included, so the same cases can run again under a different setup (or other
+ * cases under the same setup): clear, then load.
+ *
  * Unlike the ERP connector, the CRM has no auto-seeded demo data to replace:
  * with no package loaded yet the database is simply empty, so the guard never
  * has to distinguish "seed data" from "real data" the way the ERP's does.
@@ -16,17 +20,23 @@ import { parseSimulationPackage, companyContacts } from "../company.js";
 import { canonicalSha256 } from "../package-hash.js";
 
 export const ALREADY_LOADED_MESSAGE =
-  "Refused: test data already loaded — a simulation can only be created, not edited; start from an empty database.";
+  "Refused: test data already loaded — a simulation can only be created, not edited; clear it first (clear_simulation), then load.";
 
 /** Tables whose emptiness proves this database has never held anything but the auto-created schema. */
-const MUST_BE_EMPTY = ["simulation_load", "changes", "contacts", "deals", "tasks", "activities"] as const;
+const MUST_BE_EMPTY = ["simulation_load", "contacts", "deals", "tasks", "activities"] as const;
 
 async function assertLoadable(db: Db): Promise<void> {
   for (const table of MUST_BE_EMPTY) {
     const row = await db.get<{ n: number }>(`SELECT COUNT(*) as n FROM ${table}`);
     if ((row?.n ?? 0) > 0) throw new Error(ALREADY_LOADED_MESSAGE);
   }
+  // The clear itself is recorded as a change (the trace of its ticket); it must not block the load after it.
+  const changes = await db.get<{ n: number }>(`SELECT COUNT(*) as n FROM changes WHERE tool <> 'clear_simulation'`);
+  if ((changes?.n ?? 0) > 0) throw new Error(ALREADY_LOADED_MESSAGE);
 }
+
+/** Every table that holds test data, in an order the foreign keys allow deleting. */
+const CLEAR_ORDER = ["tasks", "activities", "deals", "contacts", "changes", "refusals", "simulation_load"] as const;
 
 const INSERT_CONTACT = `INSERT INTO contacts (id, name, email, phone, company, role, type, stage, tags, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
@@ -50,4 +60,21 @@ export async function load_simulation(db: Db, args: Record<string, any>) {
   }
 
   return { name: pkg.name, contacts_loaded: contacts.length, package_sha256: sha256 };
+}
+
+export async function clear_simulation(db: Db, _args: Record<string, any>) {
+  const deleted: Record<string, number> = {};
+  await db.run("BEGIN");
+  try {
+    for (const table of CLEAR_ORDER) {
+      const row = await db.get<{ n: number }>(`SELECT COUNT(*) as n FROM ${table}`);
+      deleted[table] = Number(row?.n ?? 0);
+      await db.run(`DELETE FROM ${table}`);
+    }
+    await db.run("COMMIT");
+  } catch (err) {
+    await db.run("ROLLBACK").catch(() => {});
+    throw err;
+  }
+  return { cleared: true, deleted };
 }

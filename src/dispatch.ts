@@ -10,7 +10,7 @@ import { log_activity, get_timeline } from "./tools/activities.js";
 import { create_deal, update_deal, get_pipeline } from "./tools/deals.js";
 import { create_task, list_tasks, complete_task } from "./tools/tasks.js";
 import { export_crm } from "./tools/export.js";
-import { load_simulation } from "./tools/simulation.js";
+import { load_simulation, clear_simulation } from "./tools/simulation.js";
 
 /**
  * Tools that change the CRM — the ones the gateway issues a ticket for (matches
@@ -28,6 +28,7 @@ export const CHANGE_TOOLS = new Set([
   "create_task",
   "complete_task",
   "load_simulation",
+  "clear_simulation",
 ]);
 
 async function runTool(db: Db, name: string, args: Record<string, any>): Promise<unknown> {
@@ -46,6 +47,7 @@ async function runTool(db: Db, name: string, args: Record<string, any>): Promise
     case "complete_task": return complete_task(db, args);
     case "export_crm": return export_crm(db, args);
     case "load_simulation": return load_simulation(db, args);
+    case "clear_simulation": return clear_simulation(db, args);
     default: throw new Error(`Unknown tool: ${name}`);
   }
 }
@@ -71,6 +73,8 @@ function describeChange(name: string, args: Record<string, any>, result: unknown
       return { documentId: typeof args.id === "string" ? args.id : null, summary: typeof doc.message === "string" ? doc.message : "completed" };
     case "load_simulation":
       return { documentId: null, summary: typeof doc.name === "string" ? doc.name : "" };
+    case "clear_simulation":
+      return { documentId: null, summary: "cleared" };
     default:
       return { documentId: (doc.id as string) ?? null, summary: "" };
   }
