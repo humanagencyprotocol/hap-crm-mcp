@@ -157,7 +157,7 @@ describe("changes and refusals", () => {
   it("keeps one change row per ticket even when several tickets act on the same contact", async () => {
     await freshDb();
     const contact = (await callTool(db, "simulation", "create_contact", { name: "Nova Systems", ticket_id: "t-create" })) as any;
-    await callTool(db, "simulation", "update_contact", { id: contact.id, stage: "active", ticket_id: "t-update" });
+    await callTool(db, "simulation", "update_contact", { id: contact.id, revision: 1, stage: "active", ticket_id: "t-update" });
     expect(await db.all<any>(`SELECT tool, receipt_id, document_id FROM changes ORDER BY at`)).toEqual([
       { tool: "create_contact", receipt_id: "t-create", document_id: contact.id },
       { tool: "update_contact", receipt_id: "t-update", document_id: contact.id },
@@ -179,7 +179,7 @@ describe("changes and refusals", () => {
     // caller not supplying it, same as any other optional field.
     await freshDb();
     const contact = (await callTool(db, "simulation", "create_contact", { name: "To Delete" })) as any;
-    await callTool(db, "simulation", "delete_contact", { id: contact.id });
+    await callTool(db, "simulation", "delete_contact", { id: contact.id, revision: 1 });
     const rows = await db.all<any>(`SELECT tool, receipt_id, document_id FROM changes WHERE tool = 'delete_contact'`);
     expect(rows).toEqual([{ tool: "delete_contact", receipt_id: null, document_id: contact.id }]);
   });
@@ -189,7 +189,7 @@ describe("changes and refusals", () => {
     // for the case where the gateway DOES supply one.
     await freshDb();
     const task = (await callTool(db, "simulation", "create_task", { title: "Follow up", ticket_id: "t-task" })) as any;
-    await callTool(db, "simulation", "complete_task", { id: task.id });
+    await callTool(db, "simulation", "complete_task", { id: task.id, revision: 1 });
     const rows = await db.all<any>(`SELECT tool, receipt_id, document_id FROM changes WHERE tool = 'complete_task'`);
     expect(rows).toEqual([{ tool: "complete_task", receipt_id: null, document_id: task.id }]);
   });
