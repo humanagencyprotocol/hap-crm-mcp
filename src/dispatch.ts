@@ -15,8 +15,10 @@ import { load_simulation, clear_simulation } from "./tools/simulation.js";
 /**
  * Tools that change the CRM — the ones the gateway issues a ticket for (matches
  * the write overrides in the shipped `crm.json` manifest). All of these now
- * carry `receipt_id` in their schema (see index.ts) and so get a non-null
- * receipt_id in the change/refusal record when the gateway supplies one.
+ * carry `ticket_id` in their schema (see tools/definitions.ts) and so get a
+ * non-null ticket id in the change/refusal record when the gateway supplies
+ * one (stored in the existing receipt_id column — internal storage name,
+ * unchanged).
  */
 export const CHANGE_TOOLS = new Set([
   "create_contact",
@@ -82,22 +84,24 @@ function describeChange(name: string, args: Record<string, any>, result: unknown
 
 /**
  * Run a tool in the given mode. Every successful change is recorded (`changes`)
- * with the receipt_id the gateway injected; a call the connector refuses AFTER
+ * with the ticket_id the gateway injected; a call the connector refuses AFTER
  * the gateway let it through is recorded in `refusals` with the same
- * receipt_id — that is the trace of a ticket whose action never happened. In
+ * ticket_id — that is the trace of a ticket whose action never happened. In
  * live mode nothing runs and nothing is recorded locally: there is no local
- * system to have refused anything. Reads record nothing either way.
+ * system to have refused anything. Reads record nothing either way. Both
+ * tables store the id in their existing receipt_id column (internal storage
+ * name, unchanged).
  */
 export async function callTool(db: Db, mode: CrmMode, name: string, args: Record<string, any>): Promise<unknown> {
   if (mode === "live") throw new Error(LIVE_NOT_AVAILABLE);
-  const receiptId = typeof args.receipt_id === "string" ? args.receipt_id : null;
+  const ticketId = typeof args.ticket_id === "string" ? args.ticket_id : null;
   try {
     const result = await runTool(db, name, args);
     if (CHANGE_TOOLS.has(name)) {
       const { documentId, summary } = describeChange(name, args, result);
       await db.run(
         `INSERT INTO changes (id, at, tool, receipt_id, document_id, summary) VALUES (?, ?, ?, ?, ?, ?)`,
-        [randomUUID(), new Date().toISOString(), name, receiptId, documentId, summary],
+        [randomUUID(), new Date().toISOString(), name, ticketId, documentId, summary],
       );
     }
     return result;
@@ -105,7 +109,7 @@ export async function callTool(db: Db, mode: CrmMode, name: string, args: Record
     if (CHANGE_TOOLS.has(name)) {
       const message = err instanceof Error ? err.message : String(err);
       await db.run(`INSERT INTO refusals (id, at, tool, receipt_id, message) VALUES (?, ?, ?, ?, ?)`, [
-        randomUUID(), new Date().toISOString(), name, receiptId, message,
+        randomUUID(), new Date().toISOString(), name, ticketId, message,
       ]);
     }
     throw err;

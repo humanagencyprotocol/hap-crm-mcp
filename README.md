@@ -150,7 +150,7 @@ in `simulation_load`. Example package:
 deals, tasks, and the record of changes and refusals — so the same cases can run
 again under a different setup, or other cases under the same one: clear, then
 load. Simulation mode only; refused in live mode. The clear itself stays recorded
-as one change with its `receipt_id`; that entry does not block the next load.
+as one change with its `ticket_id`; that entry does not block the next load.
 Cannot be undone — take an `export` first if you want to keep the record.
 
 **Changes.** Every successful call to a write tool (`create_contact`,
@@ -158,14 +158,15 @@ Cannot be undone — take an `export` first if you want to keep the record.
 `update_deal`, `create_task`, `complete_task`, `load_simulation`,
 `clear_simulation`) is recorded
 as its own entry in `changes` — time, tool, the affected document's id, a
-short summary, and the `receipt_id` the gateway injected. `delete_contact`
-and `complete_task` now declare `receipt_id` too (additive); `delete_contact`
+short summary, and the `ticket_id` the gateway injected. `delete_contact`
+and `complete_task` also declare `ticket_id`; `delete_contact`
 still has no surviving row to store it on, so only the change record carries
-it. Reads record nothing.
+it. Reads record nothing. (Internally both tables still store this in a
+column named `receipt_id` — storage, not wire; see CHANGELOG.)
 
 **Refusals after the gateway.** When the connector refuses a write call the
 gateway already let through (unknown id, a bad state), it records the refusal
-in `refusals` with the `receipt_id` the gateway injected (or `null`, where no
+in `refusals` with the `ticket_id` the gateway injected (or `null`, where no
 row survives to carry it). A ticket then exists for an action that never
 happened, and this record is the only place that says so.
 

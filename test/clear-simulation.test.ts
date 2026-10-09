@@ -4,7 +4,7 @@
  *
  * - live mode refuses it like every other tool, deleting nothing;
  * - it deletes every table that holds test data, changes and refusals included;
- * - the clear itself stays recorded as one change with its receipt_id (the trace
+ * - the clear itself stays recorded as one change with its ticket_id (the trace
  *   of its ticket), and that row does not block the next load;
  * - clear → load → work → clear → load runs.
  */
@@ -39,12 +39,12 @@ afterEach(async () => {
 
 /** Load the package, then log an activity, open a deal and a task, and get one call refused. */
 async function useIt(db: Db) {
-  await callTool(db, "simulation", "load_simulation", { package: pkg, receipt_id: "t-load" });
+  await callTool(db, "simulation", "load_simulation", { package: pkg, ticket_id: "t-load" });
   const [contact] = (await callTool(db, "simulation", "find_contacts", {})) as any[];
   await callTool(db, "simulation", "log_activity", { contact_id: contact.id, type: "note", summary: "called" });
   const deal = (await callTool(db, "simulation", "create_deal", { contact_id: contact.id, title: "Deal" })) as any;
   await callTool(db, "simulation", "create_task", { contact_id: contact.id, deal_id: deal.id, title: "Follow up" });
-  await expect(callTool(db, "simulation", "load_simulation", { package: pkg, receipt_id: "t-refused" })).rejects.toThrow(ALREADY_LOADED_MESSAGE);
+  await expect(callTool(db, "simulation", "load_simulation", { package: pkg, ticket_id: "t-refused" })).rejects.toThrow(ALREADY_LOADED_MESSAGE);
 }
 
 const count = async (db: Db, table: string) => Number((await db.get<{ n: number }>(`SELECT COUNT(*) as n FROM ${table}`))!.n);
@@ -53,7 +53,7 @@ describe("clear_simulation", () => {
   it("live mode refuses it and deletes nothing", async () => {
     const db = await freshDb();
     await useIt(db);
-    await expect(callTool(db, "live", "clear_simulation", { receipt_id: "t-clear" })).rejects.toThrow(LIVE_NOT_AVAILABLE);
+    await expect(callTool(db, "live", "clear_simulation", { ticket_id: "t-clear" })).rejects.toThrow(LIVE_NOT_AVAILABLE);
     expect(await count(db, "deals")).toBe(1);
     expect(await count(db, "simulation_load")).toBe(1);
   });
@@ -63,7 +63,7 @@ describe("clear_simulation", () => {
     await useIt(db);
     for (const t of TABLES) expect(await count(db, t), t).toBeGreaterThan(0);
 
-    const result = (await callTool(db, "simulation", "clear_simulation", { receipt_id: "t-clear" })) as any;
+    const result = (await callTool(db, "simulation", "clear_simulation", { ticket_id: "t-clear" })) as any;
     expect(result.cleared).toBe(true);
     expect(result.deleted).toMatchObject({ deals: 1, tasks: 1, activities: 1, simulation_load: 1, refusals: 1 });
 
@@ -75,8 +75,8 @@ describe("clear_simulation", () => {
     const db = await freshDb();
     await callTool(db, "simulation", "clear_simulation", {}); // on an empty CRM: harmless
     await useIt(db);
-    await callTool(db, "simulation", "clear_simulation", { receipt_id: "t-clear" });
-    const again = (await callTool(db, "simulation", "load_simulation", { package: pkg, receipt_id: "t-load-2" })) as any;
+    await callTool(db, "simulation", "clear_simulation", { ticket_id: "t-clear" });
+    const again = (await callTool(db, "simulation", "load_simulation", { package: pkg, ticket_id: "t-load-2" })) as any;
     expect(again.contacts_loaded).toBeGreaterThan(0);
     expect(await db.all(`SELECT tool, receipt_id FROM changes ORDER BY at, rowid`)).toEqual([
       { tool: "clear_simulation", receipt_id: "t-clear" },

@@ -15,8 +15,9 @@ interface Deal {
 }
 
 export async function create_deal(db: Db, args: Record<string, any>) {
-  // receipt_id: Suveren authorizing receipt (Content Provenance §4.1).
-  const { contact_id, title, value, currency, stage, expected_close, notes, receipt_id } = args;
+  // ticket_id: Suveren mandate ticket (Content Provenance §4.1). Stored on
+  // the existing receipt_id column (internal storage name, unchanged).
+  const { contact_id, title, value, currency, stage, expected_close, notes, ticket_id } = args;
   const id = uuidv4();
 
   await db.run(
@@ -31,7 +32,7 @@ export async function create_deal(db: Db, args: Record<string, any>) {
       stage ?? "lead",
       expected_close ?? null,
       notes ?? null,
-      receipt_id ?? null,
+      ticket_id ?? null,
     ]
   );
 
@@ -40,9 +41,9 @@ export async function create_deal(db: Db, args: Record<string, any>) {
 }
 
 export async function update_deal(db: Db, args: Record<string, any>) {
-  const { id, ...fields } = args;
+  const { id, ticket_id, ...fields } = args;
 
-  const updatable = ["title", "value", "currency", "stage", "expected_close", "notes", "receipt_id"];
+  const updatable = ["title", "value", "currency", "stage", "expected_close", "notes"];
   const setClauses: string[] = [];
   const params: any[] = [];
 
@@ -51,6 +52,13 @@ export async function update_deal(db: Db, args: Record<string, any>) {
       setClauses.push(`${key} = ?`);
       params.push(fields[key]);
     }
+  }
+
+  // ticket_id: stored on the existing receipt_id column (internal storage
+  // name, unchanged).
+  if (ticket_id !== undefined) {
+    setClauses.push("receipt_id = ?");
+    params.push(ticket_id);
   }
 
   if (setClauses.length === 0) {

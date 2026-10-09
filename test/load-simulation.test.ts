@@ -7,12 +7,12 @@
  * - the first load seeds exactly the package's customers (+ optional contacts);
  * - a second load, a load after CRM_COMPANY_FILE already seeded data, or a
  *   load after any business change is refused AND recorded in `refusals` with
- *   the gateway's receipt_id — the only trace that a ticket exists for an
+ *   the gateway's ticket_id — the only trace that a ticket exists for an
  *   action that never happened;
  * - an invalid package is refused whole, naming the field;
  * - `products`/`items` and `cases` are accepted but ignored;
  * - the package hash is stable regardless of key order;
- * - delete_contact and complete_task now carry receipt_id into the change record.
+ * - delete_contact and complete_task carry ticket_id into the change record.
  */
 import { describe, it, expect, afterEach } from "vitest";
 import { tmpdir } from "os";
@@ -61,7 +61,7 @@ const PACKAGE = {
 describe("live mode", () => {
   it("refuses load_simulation like every other tool, touching nothing", async () => {
     await freshDb();
-    await expect(callTool(db, "live", "load_simulation", { package: PACKAGE, receipt_id: "t-1" })).rejects.toThrow(LIVE_NOT_AVAILABLE);
+    await expect(callTool(db, "live", "load_simulation", { package: PACKAGE, ticket_id: "t-1" })).rejects.toThrow(LIVE_NOT_AVAILABLE);
     expect(await db.all(`SELECT * FROM simulation_load`)).toHaveLength(0);
   });
 });
@@ -69,7 +69,7 @@ describe("live mode", () => {
 describe("first load", () => {
   it("seeds exactly the package's customers as customer-type contacts", async () => {
     await freshDb();
-    const result = (await callTool(db, "simulation", "load_simulation", { package: PACKAGE, receipt_id: "t-load" })) as any;
+    const result = (await callTool(db, "simulation", "load_simulation", { package: PACKAGE, ticket_id: "t-load" })) as any;
     expect(result).toMatchObject({ name: PACKAGE.name, contacts_loaded: 2 });
     expect(result.package_sha256).toHaveLength(64);
 
@@ -87,26 +87,26 @@ describe("first load", () => {
     expect(result.contacts_loaded).toBe(3);
   });
 
-  it("is recorded as a change with the gateway's receipt_id", async () => {
+  it("is recorded as a change with the gateway's ticket_id", async () => {
     await freshDb();
-    await callTool(db, "simulation", "load_simulation", { package: PACKAGE, receipt_id: "t-load" });
+    await callTool(db, "simulation", "load_simulation", { package: PACKAGE, ticket_id: "t-load" });
     const rows = await db.all<any>(`SELECT tool, receipt_id FROM changes`);
     expect(rows).toEqual([{ tool: "load_simulation", receipt_id: "t-load" }]);
   });
 
   it("stores name and sha256 in simulation_load", async () => {
     await freshDb();
-    await callTool(db, "simulation", "load_simulation", { package: PACKAGE, receipt_id: "t-load" });
+    await callTool(db, "simulation", "load_simulation", { package: PACKAGE, ticket_id: "t-load" });
     const rows = await db.all<any>(`SELECT name, package_sha256 FROM simulation_load`);
     expect(rows).toEqual([{ name: PACKAGE.name, package_sha256: canonicalSha256(PACKAGE) }]);
   });
 });
 
 describe("create only — refused, never edited", () => {
-  it("refuses a second load and records the refusal with receipt_id", async () => {
+  it("refuses a second load and records the refusal with ticket_id", async () => {
     await freshDb();
-    await callTool(db, "simulation", "load_simulation", { package: PACKAGE, receipt_id: "t-first" });
-    await expect(callTool(db, "simulation", "load_simulation", { package: PACKAGE, receipt_id: "t-second" }))
+    await callTool(db, "simulation", "load_simulation", { package: PACKAGE, ticket_id: "t-first" });
+    await expect(callTool(db, "simulation", "load_simulation", { package: PACKAGE, ticket_id: "t-second" }))
       .rejects.toThrow(ALREADY_LOADED_MESSAGE);
     const refusals = await db.all<any>(`SELECT tool, receipt_id FROM refusals`);
     expect(refusals).toEqual([{ tool: "load_simulation", receipt_id: "t-second" }]);
@@ -127,14 +127,14 @@ describe("create only — refused, never edited", () => {
     db = await createDb(parseCompany(JSON.parse(readFileSync(path, "utf8"))));
     expect(await db.all(`SELECT * FROM contacts`)).toHaveLength(1);
 
-    await expect(callTool(db, "simulation", "load_simulation", { package: PACKAGE, receipt_id: "t-x" }))
+    await expect(callTool(db, "simulation", "load_simulation", { package: PACKAGE, ticket_id: "t-x" }))
       .rejects.toThrow(ALREADY_LOADED_MESSAGE);
     rmSync(path, { force: true });
   });
 
   it("refuses a load after a business change (a contact was created, no prior load_simulation call)", async () => {
     await freshDb();
-    await callTool(db, "simulation", "create_contact", { name: "Someone", receipt_id: "t-create" });
+    await callTool(db, "simulation", "create_contact", { name: "Someone", ticket_id: "t-create" });
     await expect(callTool(db, "simulation", "load_simulation", { package: PACKAGE })).rejects.toThrow(ALREADY_LOADED_MESSAGE);
   });
 
@@ -160,7 +160,7 @@ describe("invalid package — refused whole, naming the field", () => {
 
   it("the refusal happens before anything is written", async () => {
     await freshDb();
-    await expect(callTool(db, "simulation", "load_simulation", { package: { name: "X" }, receipt_id: "t-bad" })).rejects.toThrow();
+    await expect(callTool(db, "simulation", "load_simulation", { package: { name: "X" }, ticket_id: "t-bad" })).rejects.toThrow();
     expect(await db.all(`SELECT * FROM simulation_load`)).toHaveLength(0);
     expect(await db.all<any>(`SELECT tool, receipt_id FROM refusals`)).toEqual([{ tool: "load_simulation", receipt_id: "t-bad" }]);
   });
@@ -211,19 +211,19 @@ describe("the shipped example package is valid", () => {
   });
 });
 
-describe("receipt_id now traced for delete_contact and complete_task", () => {
-  it("delete_contact's change record carries the gateway's receipt_id", async () => {
+describe("ticket_id now traced for delete_contact and complete_task", () => {
+  it("delete_contact's change record carries the gateway's ticket_id", async () => {
     await freshDb();
     const contact = (await callTool(db, "simulation", "create_contact", { name: "To Delete" })) as any;
-    await callTool(db, "simulation", "delete_contact", { id: contact.id, receipt_id: "t-del" });
+    await callTool(db, "simulation", "delete_contact", { id: contact.id, ticket_id: "t-del" });
     const rows = await db.all<any>(`SELECT receipt_id FROM changes WHERE tool = 'delete_contact'`);
     expect(rows).toEqual([{ receipt_id: "t-del" }]);
   });
 
-  it("complete_task's change record AND row carry the gateway's receipt_id", async () => {
+  it("complete_task's change record AND row carry the gateway's ticket_id", async () => {
     await freshDb();
     const task = (await callTool(db, "simulation", "create_task", { title: "Follow up" })) as any;
-    await callTool(db, "simulation", "complete_task", { id: task.id, receipt_id: "t-done" });
+    await callTool(db, "simulation", "complete_task", { id: task.id, ticket_id: "t-done" });
     const changeRows = await db.all<any>(`SELECT receipt_id FROM changes WHERE tool = 'complete_task'`);
     expect(changeRows).toEqual([{ receipt_id: "t-done" }]);
     const taskRow = await db.get<any>(`SELECT receipt_id FROM tasks WHERE id = ?`, [task.id]);
@@ -234,7 +234,7 @@ describe("receipt_id now traced for delete_contact and complete_task", () => {
 describe("export", () => {
   it("includes simulation_load and changes", async () => {
     await freshDb();
-    await callTool(db, "simulation", "load_simulation", { package: PACKAGE, receipt_id: "t-export" });
+    await callTool(db, "simulation", "load_simulation", { package: PACKAGE, ticket_id: "t-export" });
     const rec = await exportRecord(db, "simulation");
     expect(rec.simulation_load).toEqual([expect.objectContaining({ name: PACKAGE.name })]);
     expect(rec.changes).toEqual([expect.objectContaining({ tool: "load_simulation", receipt_id: "t-export" })]);

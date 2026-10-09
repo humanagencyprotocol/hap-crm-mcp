@@ -30,9 +30,10 @@ function parseContact(row: Contact) {
 }
 
 export async function create_contact(db: Db, args: Record<string, any>) {
-  // receipt_id: the Suveren receipt that authorized this write (Content
-  // Provenance §4.1). Injected by the gateway; absent on direct calls.
-  const { name, email, phone, company, role, type, stage, tags, notes, receipt_id } = args;
+  // ticket_id: the Suveren mandate ticket that authorized this write (Content
+  // Provenance §4.1). Injected by the gateway; absent on direct calls. Stored
+  // on the existing receipt_id column (internal storage name, unchanged).
+  const { name, email, phone, company, role, type, stage, tags, notes, ticket_id } = args;
   const id = uuidv4();
   const tagsJson = JSON.stringify(tags ?? []);
 
@@ -50,7 +51,7 @@ export async function create_contact(db: Db, args: Record<string, any>) {
       stage ?? "new",
       tagsJson,
       notes ?? null,
-      receipt_id ?? null,
+      ticket_id ?? null,
     ]
   );
 
@@ -92,9 +93,9 @@ export async function find_contacts(db: Db, args: Record<string, any>) {
 }
 
 export async function update_contact(db: Db, args: Record<string, any>) {
-  const { id, ...fields } = args;
+  const { id, ticket_id, ...fields } = args;
 
-  const updatable = ["name", "email", "phone", "company", "role", "type", "stage", "tags", "notes", "receipt_id"];
+  const updatable = ["name", "email", "phone", "company", "role", "type", "stage", "tags", "notes"];
   const setClauses: string[] = [];
   const params: any[] = [];
 
@@ -103,6 +104,13 @@ export async function update_contact(db: Db, args: Record<string, any>) {
       setClauses.push(`${key} = ?`);
       params.push(key === "tags" ? JSON.stringify(fields[key]) : fields[key]);
     }
+  }
+
+  // ticket_id: stored on the existing receipt_id column (internal storage
+  // name, unchanged).
+  if (ticket_id !== undefined) {
+    setClauses.push("receipt_id = ?");
+    params.push(ticket_id);
   }
 
   if (setClauses.length === 0) {
@@ -123,10 +131,10 @@ export async function update_contact(db: Db, args: Record<string, any>) {
 }
 
 export async function delete_contact(db: Db, args: Record<string, any>) {
-  // receipt_id: Suveren authorizing receipt (Content Provenance §4.1). The
-  // schema now declares it (additive), but there is no row left to store it on
-  // after a delete — dispatch.ts's `changes` record (which reads args.receipt_id
-  // directly) is what carries it, same as every other write tool.
+  // ticket_id: Suveren mandate ticket (Content Provenance §4.1). The schema
+  // declares it, but there is no row left to store it on after a delete —
+  // dispatch.ts's `changes` record (which reads args.ticket_id directly) is
+  // what carries it, same as every other write tool.
   const { id } = args;
 
   const row = await db.get<Contact>("SELECT id, name FROM contacts WHERE id = ?", [id]);

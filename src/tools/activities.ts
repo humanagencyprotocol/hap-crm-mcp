@@ -12,8 +12,9 @@ interface Activity {
 }
 
 export async function log_activity(db: Db, args: Record<string, any>) {
-  // receipt_id: Suveren authorizing receipt (Content Provenance §4.1).
-  const { contact_id, type, summary, detail, date, created_by, receipt_id } = args;
+  // ticket_id: Suveren mandate ticket (Content Provenance §4.1). Stored on
+  // the existing receipt_id column (internal storage name, unchanged).
+  const { contact_id, type, summary, detail, date, created_by, ticket_id } = args;
   const id = uuidv4();
 
   await db.run(
@@ -27,7 +28,7 @@ export async function log_activity(db: Db, args: Record<string, any>) {
       detail ?? null,
       date ?? new Date().toISOString(),
       created_by ?? null,
-      receipt_id ?? null,
+      ticket_id ?? null,
     ]
   );
 
