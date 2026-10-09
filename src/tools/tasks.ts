@@ -13,8 +13,9 @@ interface Task {
 }
 
 export async function create_task(db: Db, args: Record<string, any>) {
-  // receipt_id: Suveren authorizing receipt (Content Provenance §4.1).
-  const { title, contact_id, deal_id, due_date, assigned_to, receipt_id } = args;
+  // ticket_id: Suveren mandate ticket (Content Provenance §4.1). Stored on
+  // the existing receipt_id column (internal storage name, unchanged).
+  const { title, contact_id, deal_id, due_date, assigned_to, ticket_id } = args;
   const id = uuidv4();
 
   await db.run(
@@ -27,7 +28,7 @@ export async function create_task(db: Db, args: Record<string, any>) {
       title,
       due_date ?? null,
       assigned_to ?? null,
-      receipt_id ?? null,
+      ticket_id ?? null,
     ]
   );
 
@@ -69,15 +70,16 @@ export async function list_tasks(db: Db, args: Record<string, any>) {
 }
 
 export async function complete_task(db: Db, args: Record<string, any>) {
-  // receipt_id: Suveren authorizing receipt (Content Provenance §4.1). Additive —
-  // completing a task still only requires `id`; when the gateway supplies a
-  // receipt_id it is now stored on the row, same as the other write tools.
-  const { id, receipt_id } = args;
+  // ticket_id: Suveren mandate ticket (Content Provenance §4.1). Completing a
+  // task still only requires `id`; when the gateway supplies a ticket_id it is
+  // stored on the row (existing receipt_id column, internal storage name,
+  // unchanged), same as the other write tools.
+  const { id, ticket_id } = args;
 
   const row = await db.get<Task>("SELECT id, title FROM tasks WHERE id = ?", [id]);
   if (!row) throw new Error(`Task not found: ${id}`);
 
-  await db.run("UPDATE tasks SET status = 'done', receipt_id = ? WHERE id = ?", [receipt_id ?? null, id]);
+  await db.run("UPDATE tasks SET status = 'done', receipt_id = ? WHERE id = ?", [ticket_id ?? null, id]);
 
   return { message: `Task "${row.title}" (${id}) marked as done.` };
 }

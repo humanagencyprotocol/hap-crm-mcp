@@ -65,8 +65,10 @@ CREATE TABLE IF NOT EXISTS tasks (
 );
 
 -- Calls the connector refused AFTER the gateway let them through. When the gateway
--- injected a receipt_id, a ticket exists for an action that never happened; this
+-- injected a ticket_id, a ticket exists for an action that never happened; this
 -- table is the only place that says so (the ticket alone reads like a done action).
+-- Column kept as receipt_id (internal storage name, unchanged by the v0.7 wire
+-- rename of the tool argument).
 CREATE TABLE IF NOT EXISTS refusals (
   id TEXT PRIMARY KEY,
   at TEXT NOT NULL,
@@ -78,7 +80,9 @@ CREATE TABLE IF NOT EXISTS refusals (
 -- Every change the CRM performed, one row per call — the effect each ticket
 -- produced. A document's own receipt_id column holds only its latest ticket
 -- (e.g. update_contact overwrites create_contact's), so this table, not the
--- document, is what lines up ticket <-> effect 1:1.
+-- document, is what lines up ticket <-> effect 1:1. Column kept as receipt_id
+-- (internal storage name, unchanged by the v0.7 wire rename of the tool
+-- argument).
 CREATE TABLE IF NOT EXISTS changes (
   id TEXT PRIMARY KEY,
   at TEXT NOT NULL,
@@ -99,7 +103,11 @@ CREATE TABLE IF NOT EXISTS simulation_load (
 );
 `;
 
-/** Tables that carry an authorizing receipt_id (Content Provenance §4.1). */
+/**
+ * Tables that carry an authorizing ticket id (Content Provenance §4.1), stored
+ * in the receipt_id column — internal storage name, unchanged by the v0.7 wire
+ * rename of the tool argument (receipt_id -> ticket_id).
+ */
 const RECEIPT_ID_TABLES = ["contacts", "activities", "deals", "tasks"];
 
 /** The company to seed from: CRM_COMPANY_FILE if set (refused whole if invalid), else none. */
@@ -140,7 +148,7 @@ async function createSqliteDb(dbPath: string, company: Company | null): Promise<
   db.exec(SCHEMA);
   seedSqlite(db, company);
 
-  // Migration: add receipt_id to pre-existing tables (Content Provenance §4.1).
+  // Migration: add receipt_id column to pre-existing tables (Content Provenance §4.1).
   // ALTER ... ADD COLUMN throws if it already exists, so guard on table_info.
   for (const table of RECEIPT_ID_TABLES) {
     const cols = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
@@ -193,7 +201,7 @@ async function createPostgresDb(connectionString: string, company: Company | nul
   const client = await pool.connect();
   try {
     await client.query(pgSchema);
-    // Migration: add receipt_id to pre-existing tables (Content Provenance §4.1).
+    // Migration: add receipt_id column to pre-existing tables (Content Provenance §4.1).
     for (const table of RECEIPT_ID_TABLES) {
       await client.query(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS receipt_id TEXT`);
     }
