@@ -325,6 +325,14 @@ function dropCascadeSqlite(db: import("better-sqlite3").Database, table: string,
 
   const foreignKeysWereOn = (db.pragma("foreign_keys", { simple: true }) as number) === 1;
   db.pragma("foreign_keys = OFF");
+  // Modern SQLite's ALTER TABLE RENAME rewrites any OTHER table's foreign key
+  // definition that pointed at the renamed table — e.g. tasks.deal_id
+  // REFERENCES deals(id) would end up pointing at "deals_cascade_old" once
+  // that table is dropped, leaving a dangling reference. legacy_alter_table
+  // disables that rewrite, so once the new table is created under the
+  // original name, every other table's unchanged FK text resolves correctly
+  // again — nothing is left dangling.
+  db.pragma("legacy_alter_table = ON");
   const tx = db.transaction(() => {
     db.exec(`ALTER TABLE ${table} RENAME TO ${oldTable}`);
     db.exec(createSql);
@@ -332,6 +340,7 @@ function dropCascadeSqlite(db: import("better-sqlite3").Database, table: string,
     db.exec(`DROP TABLE ${oldTable}`);
   });
   tx();
+  db.pragma("legacy_alter_table = OFF");
   if (foreignKeysWereOn) db.pragma("foreign_keys = ON");
   console.error(`[crm-mcp] migrated ${table}: dropped ON DELETE CASCADE to contacts`);
 }
