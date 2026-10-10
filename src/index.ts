@@ -13,7 +13,10 @@ import { getMode } from "./mode.js";
 import { runCli } from "./cli.js";
 import { TOOL_DEFINITIONS } from "./tools/definitions.js";
 
-
+/** Tools whose definition carries an `outputSchema` — their result is also returned as
+ * `structuredContent` (the gateway's approval preview reads this), in addition to the text
+ * content every tool already returns. */
+const STRUCTURED_RESULT_TOOLS = new Set(["get_contact", "get_deal", "get_task"]);
 
 async function main() {
   // `crm-mcp export` is a local operator command, not an MCP tool.
@@ -41,7 +44,7 @@ async function main() {
     try {
       const result = await callTool(db, mode, name, safeArgs);
 
-      return {
+      const response: Record<string, unknown> = {
         content: [
           {
             type: "text",
@@ -49,6 +52,10 @@ async function main() {
           },
         ],
       };
+      if (STRUCTURED_RESULT_TOOLS.has(name) && result && typeof result === "object") {
+        response.structuredContent = result as Record<string, unknown>;
+      }
+      return response;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       console.error(`[crm-mcp] tool error (${name}):`, message);

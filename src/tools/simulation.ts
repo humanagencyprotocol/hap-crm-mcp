@@ -35,10 +35,23 @@ async function assertLoadable(db: Db): Promise<void> {
   if ((changes?.n ?? 0) > 0) throw new Error(ALREADY_LOADED_MESSAGE);
 }
 
-/** Every table that holds test data, in an order the foreign keys allow deleting. */
-const CLEAR_ORDER = ["tasks", "activities", "deals", "contacts", "changes", "refusals", "simulation_load"] as const;
+/**
+ * Every table that holds test data, children before parents — the revision
+ * snapshot tables cascade from their parent record on delete (same as the
+ * ERP connector's quote_revisions), but are listed explicitly anyway so this
+ * report's per-table counts reflect what was actually in each one rather
+ * than a cascaded 0.
+ */
+const CLEAR_ORDER = [
+  "task_revisions", "tasks",
+  "activities",
+  "deal_revisions", "deals",
+  "contact_revisions", "contacts",
+  "changes", "refusals", "simulation_load",
+] as const;
 
-const INSERT_CONTACT = `INSERT INTO contacts (id, name, email, phone, company, role, type, stage, tags, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+const INSERT_CONTACT = `INSERT INTO contacts (id, name, email, phone, company, role, type, stage, tags, notes, revision, archived) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0)`;
+const INSERT_CONTACT_REVISION = `INSERT INTO contact_revisions (id, contact_id, revision, name, email, phone, company, role, type, stage, tags, notes, archived) VALUES (?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`;
 
 export async function load_simulation(db: Db, args: Record<string, any>) {
   const pkg = parseSimulationPackage(args.package);
@@ -51,6 +64,7 @@ export async function load_simulation(db: Db, args: Record<string, any>) {
   try {
     for (const ct of contacts) {
       await db.run(INSERT_CONTACT, [ct.id, ct.name, ct.email, ct.phone, ct.company, ct.role, ct.type, ct.stage, JSON.stringify(ct.tags), ct.notes]);
+      await db.run(INSERT_CONTACT_REVISION, [uuidv4(), ct.id, ct.name, ct.email, ct.phone, ct.company, ct.role, ct.type, ct.stage, JSON.stringify(ct.tags), ct.notes]);
     }
     await db.run(`INSERT INTO simulation_load (id, name, package_sha256) VALUES (?, ?, ?)`, [uuidv4(), pkg.name, sha256]);
     await db.run("COMMIT");

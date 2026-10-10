@@ -31,11 +31,33 @@ describe("tool documentation", () => {
       const props = (tool.inputSchema as { properties?: Record<string, unknown> }).properties ?? {};
       expect(props).not.toHaveProperty("receipt_id");
     }
-    const writeTools = ["create_contact", "update_contact", "delete_contact", "log_activity", "create_deal", "update_deal", "create_task", "complete_task", "load_simulation", "clear_simulation"];
+    const writeTools = ["create_contact", "update_contact", "delete_contact", "restore_contact", "convert_contact", "log_activity", "create_deal", "update_deal", "create_task", "complete_task", "load_simulation", "clear_simulation"];
     for (const name of writeTools) {
       const tool = TOOL_DEFINITIONS.find((t) => t.name === name)!;
       const props = (tool.inputSchema as { properties?: Record<string, unknown> }).properties ?? {};
       expect(props).toHaveProperty("ticket_id");
+    }
+  });
+
+  it("requires revision on every action that names an existing contact/deal/task", () => {
+    const revisionRequiredTools = ["update_contact", "delete_contact", "restore_contact", "convert_contact", "update_deal", "complete_task"];
+    for (const name of revisionRequiredTools) {
+      const tool = TOOL_DEFINITIONS.find((t) => t.name === name)!;
+      const schema = tool.inputSchema as { properties?: Record<string, unknown>; required?: readonly string[] };
+      expect(schema.properties).toHaveProperty("revision");
+      expect(schema.required).toContain("revision");
+    }
+  });
+
+  it("declares an outputSchema (for the gateway's approval preview) on every read-by-id tool", () => {
+    for (const name of ["get_contact", "get_deal", "get_task"]) {
+      const tool = TOOL_DEFINITIONS.find((t) => t.name === name)! as { outputSchema?: { properties?: Record<string, unknown> } };
+      expect(tool.outputSchema).toBeDefined();
+      expect(tool.outputSchema!.properties).toHaveProperty("revision");
+      for (const [key, prop] of Object.entries(tool.outputSchema!.properties!)) {
+        expect(prop, `${name}.outputSchema.${key}`).toHaveProperty("title");
+        expect(prop, `${name}.outputSchema.${key}`).toHaveProperty("description");
+      }
     }
   });
 });

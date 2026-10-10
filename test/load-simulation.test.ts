@@ -138,12 +138,15 @@ describe("create only — refused, never edited", () => {
     await expect(callTool(db, "simulation", "load_simulation", { package: PACKAGE })).rejects.toThrow(ALREADY_LOADED_MESSAGE);
   });
 
-  it("refuses a load after a deal exists even with zero contacts left (deal survives contact deletion)", async () => {
+  it("refuses a load after a deal exists, even once its contact is archived (deal and contact both survive delete_contact)", async () => {
     await freshDb();
     const contact = (await callTool(db, "simulation", "create_contact", { name: "Someone" })) as any;
     await callTool(db, "simulation", "create_deal", { contact_id: contact.id, title: "Deal" });
-    await callTool(db, "simulation", "delete_contact", { id: contact.id });
-    expect(await db.all(`SELECT * FROM contacts`)).toHaveLength(0);
+    await callTool(db, "simulation", "delete_contact", { id: contact.id, revision: 1 });
+    // delete_contact archives — it does not delete, and there is no cascade.
+    const rows = await db.all<any>(`SELECT archived FROM contacts`);
+    expect(rows).toEqual([{ archived: 1 }]);
+    expect(await db.all(`SELECT * FROM deals`)).toHaveLength(1);
     await expect(callTool(db, "simulation", "load_simulation", { package: PACKAGE })).rejects.toThrow(ALREADY_LOADED_MESSAGE);
   });
 });
@@ -215,7 +218,7 @@ describe("ticket_id now traced for delete_contact and complete_task", () => {
   it("delete_contact's change record carries the gateway's ticket_id", async () => {
     await freshDb();
     const contact = (await callTool(db, "simulation", "create_contact", { name: "To Delete" })) as any;
-    await callTool(db, "simulation", "delete_contact", { id: contact.id, ticket_id: "t-del" });
+    await callTool(db, "simulation", "delete_contact", { id: contact.id, revision: 1, ticket_id: "t-del" });
     const rows = await db.all<any>(`SELECT receipt_id FROM changes WHERE tool = 'delete_contact'`);
     expect(rows).toEqual([{ receipt_id: "t-del" }]);
   });
@@ -223,7 +226,7 @@ describe("ticket_id now traced for delete_contact and complete_task", () => {
   it("complete_task's change record AND row carry the gateway's ticket_id", async () => {
     await freshDb();
     const task = (await callTool(db, "simulation", "create_task", { title: "Follow up" })) as any;
-    await callTool(db, "simulation", "complete_task", { id: task.id, ticket_id: "t-done" });
+    await callTool(db, "simulation", "complete_task", { id: task.id, revision: 1, ticket_id: "t-done" });
     const changeRows = await db.all<any>(`SELECT receipt_id FROM changes WHERE tool = 'complete_task'`);
     expect(changeRows).toEqual([{ receipt_id: "t-done" }]);
     const taskRow = await db.get<any>(`SELECT receipt_id FROM tasks WHERE id = ?`, [task.id]);
