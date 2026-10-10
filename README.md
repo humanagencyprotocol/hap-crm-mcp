@@ -8,7 +8,7 @@ A simple CRM for AI agents, built as an [MCP](https://modelcontextprotocol.io) s
 
 ## What It Does
 
-Four entities. Thirteen tools. One database file.
+Four entities. Eighteen tools. One database file.
 
 - **Contacts** — people you interact with (customers, leads, partners, vendors)
 - **Activities** — what happened (emails, calls, meetings, notes, purchases)
@@ -48,9 +48,12 @@ DATABASE_URL=postgres://user:pass@host:5432/mydb npx @humanagencyp/crm-mcp@lates
 | Tool | Description |
 |------|-------------|
 | `create_contact` | Create a new contact (name, email, phone, company, role, type, stage, tags) |
-| `find_contacts` | Search by name, email, company, type, or stage |
-| `update_contact` | Update any contact field |
-| `delete_contact` | Delete a contact and all related activities, deals, tasks |
+| `find_contacts` | Search by name, email, company, type, or stage (archived contacts only with `include_archived`) |
+| `get_contact` | One contact by id, including its `revision`; an optional `revision` returns that past version |
+| `update_contact` | Update a contact's fields (not `type`); needs the current `revision` |
+| `delete_contact` | Archive a contact — its activities, deals and tasks stay; needs the current `revision` |
+| `restore_contact` | Bring an archived contact back; needs the current `revision` |
+| `convert_contact` | Change a contact's type (e.g. lead → customer); needs the current `revision` |
 
 ### Activities
 
@@ -64,7 +67,8 @@ DATABASE_URL=postgres://user:pass@host:5432/mydb npx @humanagencyp/crm-mcp@lates
 | Tool | Description |
 |------|-------------|
 | `create_deal` | Create a deal (title, value, currency, stage, expected close) |
-| `update_deal` | Update deal stage, value, or other fields |
+| `get_deal` | One deal by id, including its `revision`; an optional `revision` returns that past version |
+| `update_deal` | Update deal stage, value, or other fields; needs the current `revision` |
 | `get_pipeline` | View deals by stage |
 
 ### Tasks
@@ -73,7 +77,13 @@ DATABASE_URL=postgres://user:pass@host:5432/mydb npx @humanagencyp/crm-mcp@lates
 |------|-------------|
 | `create_task` | Create a task linked to a contact or deal |
 | `list_tasks` | List tasks by status, contact, deal, or assignee |
-| `complete_task` | Mark a task as done |
+| `get_task` | One task by id, including its `revision`; an optional `revision` returns that past version |
+| `complete_task` | Mark a task as done; needs the current `revision` |
+
+Contacts, deals and tasks carry a `revision`; a change on a record that is no
+longer at the declared revision is refused ("Contact c-12 is at revision 2; this
+request is for revision 1."). Activities are append-only. Full rules:
+[docs/contract.md](docs/contract.md).
 
 ### Export
 
@@ -154,14 +164,13 @@ as one change with its `ticket_id`; that entry does not block the next load.
 Cannot be undone — take an `export` first if you want to keep the record.
 
 **Changes.** Every successful call to a write tool (`create_contact`,
-`update_contact`, `delete_contact`, `log_activity`, `create_deal`,
-`update_deal`, `create_task`, `complete_task`, `load_simulation`,
-`clear_simulation`) is recorded
+`update_contact`, `delete_contact`, `restore_contact`, `convert_contact`,
+`log_activity`, `create_deal`, `update_deal`, `create_task`, `complete_task`,
+`load_simulation`, `clear_simulation`) is recorded
 as its own entry in `changes` — time, tool, the affected document's id, a
-short summary, and the `ticket_id` the gateway injected. `delete_contact`
-and `complete_task` also declare `ticket_id`; `delete_contact`
-still has no surviving row to store it on, so only the change record carries
-it. Reads record nothing. (Internally both tables still store this in a
+short summary, the record's new `revision`, its old and new values, and the
+`ticket_id` the gateway injected. Every past revision of a contact, deal or
+task is kept and can be read back with `get_contact` / `get_deal` / `get_task`. Reads record nothing. (Internally both tables still store this in a
 column named `receipt_id` — storage, not wire; see CHANGELOG.)
 
 **Refusals after the gateway.** When the connector refuses a write call the
