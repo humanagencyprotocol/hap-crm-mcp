@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.4.1
 
 **BREAKING:** every tool that changes something requires `contact_type` (and
 `create_contact` requires `type`). A missing or wrong value is refused.
