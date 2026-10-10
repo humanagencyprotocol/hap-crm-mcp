@@ -78,13 +78,21 @@ function refuseNotArchived(contact: ContactRow): never {
 }
 
 /**
- * Checks the caller's declared `contact_type` (the gateway's bound scope
- * value — today a static manifest claim, soon an actual call argument)
- * against the contact's real stored type. Absent declaration is not
- * checked: callers that don't declare a scope make no claim to verify.
+ * Checks the caller's declared `contact_type` — the type the call says it acts
+ * on, which a governing layer checks against what the caller is authorized
+ * for — against the contact's real stored type. Required: a call that does not
+ * say which type it acts on cannot be shown to stay within such an
+ * authorization, so it is refused rather than let through unchecked.
  */
 export function checkContactType(contact: ContactRow, declaredType: unknown): void {
-  if (declaredType === undefined) return;
+  if (declaredType === undefined || declaredType === null || declaredType === "") {
+    refuse(
+      "contact_type",
+      declaredType,
+      contact.type,
+      `contact_type is required: say which contact type this call acts on (contact ${contact.name} (${contact.id}) is type ${JSON.stringify(contact.type)}).`
+    );
+  }
   if (declaredType !== contact.type) {
     refuse(
       "contact_type",
@@ -295,9 +303,10 @@ export async function delete_contact(db: Db, args: Record<string, any>) {
 }
 
 export async function restore_contact(db: Db, args: Record<string, any>) {
-  const { id, revision, ticket_id } = args;
+  const { id, revision, contact_type, ticket_id } = args;
 
   const contact = await requireContact(db, id);
+  checkContactType(contact, contact_type);
   if (!contact.archived) refuseNotArchived(contact);
   requireCurrentRevision("Contact", id, contact.revision, revision);
 
@@ -321,7 +330,22 @@ export async function convert_contact(db: Db, args: Record<string, any>) {
   const contact = await requireContact(db, id);
   if (contact.archived) refuseArchived(contact);
   requireCurrentRevision("Contact", id, contact.revision, revision);
-  checkContactType(contact, contact_type);
+  // A conversion moves the record from one type to another, so it declares BOTH:
+  // "<current>,<new>" — whatever authorizes the call must cover both types (a
+  // "customers only" authority must not turn a customer into a lead).
+  const declared = typeof contact_type === "string" ? contact_type.split(",").map((t) => t.trim()) : [];
+  if (declared.length !== 2) {
+    refuse(
+      "contact_type",
+      contact_type,
+      `${contact.type},${to_type}`,
+      `convert_contact declares both types, the current and the new one, as "<current>,<new>" — here "${contact.type},${to_type}".`
+    );
+  }
+  checkContactType(contact, declared[0]);
+  if (declared[1] !== to_type) {
+    refuse("contact_type", contact_type, `${contact.type},${to_type}`, `The declared new type ${JSON.stringify(declared[1])} is not the requested to_type ${JSON.stringify(to_type)}.`);
+  }
 
   if (!(CONTACT_TYPES as readonly string[]).includes(to_type)) {
     throw new Error(`to_type must be one of ${CONTACT_TYPES.join(", ")} — got ${JSON.stringify(to_type)}`);

@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+
+**BREAKING:** every tool that changes something requires `contact_type` (and
+`create_contact` requires `type`). A missing or wrong value is refused.
+
+- `contact_type` is required on `update_contact`, `delete_contact`,
+  `restore_contact`, `log_activity`, `create_deal`, `update_deal`,
+  `create_task` and `complete_task`, and checked against the contact's real
+  stored type (a task without a contact must declare a known type).
+  Before, an absent value was not checked, so a call could stay silent about
+  the type it acted on.
+- `convert_contact` declares both types, `"<current>,<new>"`; the current one
+  is checked against the stored type, the new one must equal `to_type`.
+- `restore_contact` and `complete_task` now check the contact type too;
+  `update_deal` checked it only when a value was given — now always.
+
 ## 1.4.0
 
 **BREAKING:** changing an existing contact, deal or task now needs its current

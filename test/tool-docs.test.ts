@@ -49,6 +49,26 @@ describe("tool documentation", () => {
     }
   });
 
+  it("requires contact_type on every tool that acts on a contact (checked against the real stored type)", () => {
+    const contactTypeRequiredTools = [
+      "update_contact", "delete_contact", "restore_contact", "convert_contact",
+      "log_activity", "create_deal", "update_deal", "create_task", "complete_task",
+    ];
+    for (const name of contactTypeRequiredTools) {
+      const tool = TOOL_DEFINITIONS.find((t) => t.name === name)!;
+      const schema = tool.inputSchema as { properties?: Record<string, unknown>; required?: readonly string[] };
+      expect(schema.properties, name).toHaveProperty("contact_type");
+      expect(schema.required, name).toContain("contact_type");
+    }
+  });
+
+  it("requires `type` on create_contact — the one tool with no existing contact to check against", () => {
+    const tool = TOOL_DEFINITIONS.find((t) => t.name === "create_contact")!;
+    const schema = tool.inputSchema as { properties?: Record<string, unknown>; required?: readonly string[] };
+    expect(schema.properties).toHaveProperty("type");
+    expect(schema.required).toContain("type");
+  });
+
   it("declares an outputSchema (for the gateway's approval preview) on every read-by-id tool", () => {
     for (const name of ["get_contact", "get_deal", "get_task"]) {
       const tool = TOOL_DEFINITIONS.find((t) => t.name === name)! as { outputSchema?: { properties?: Record<string, unknown> } };

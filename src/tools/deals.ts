@@ -87,10 +87,8 @@ export async function update_deal(db: Db, args: Record<string, any>) {
   const deal = await requireDeal(db, id);
   requireCurrentRevision("Deal", id, deal.revision, revision);
 
-  if (contact_type !== undefined) {
-    const contact = await requireContact(db, deal.contact_id);
-    checkContactType(contact, contact_type);
-  }
+  const contact = await requireContact(db, deal.contact_id);
+  checkContactType(contact, contact_type);
 
   const changedKeys = UPDATABLE_FIELDS.filter((k) => k in fields);
   if (changedKeys.length === 0) {

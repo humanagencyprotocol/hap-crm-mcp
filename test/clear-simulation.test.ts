@@ -41,9 +41,9 @@ afterEach(async () => {
 async function useIt(db: Db) {
   await callTool(db, "simulation", "load_simulation", { package: pkg, ticket_id: "t-load" });
   const [contact] = (await callTool(db, "simulation", "find_contacts", {})) as any[];
-  await callTool(db, "simulation", "log_activity", { contact_id: contact.id, type: "note", summary: "called" });
-  const deal = (await callTool(db, "simulation", "create_deal", { contact_id: contact.id, title: "Deal" })) as any;
-  await callTool(db, "simulation", "create_task", { contact_id: contact.id, deal_id: deal.id, title: "Follow up" });
+  await callTool(db, "simulation", "log_activity", { contact_id: contact.id, type: "note", summary: "called", contact_type: "customer" });
+  const deal = (await callTool(db, "simulation", "create_deal", { contact_id: contact.id, title: "Deal", contact_type: "customer" })) as any;
+  await callTool(db, "simulation", "create_task", { contact_id: contact.id, deal_id: deal.id, title: "Follow up", contact_type: "customer" });
   await expect(callTool(db, "simulation", "load_simulation", { package: pkg, ticket_id: "t-refused" })).rejects.toThrow(ALREADY_LOADED_MESSAGE);
 }
 
