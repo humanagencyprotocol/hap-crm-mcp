@@ -245,10 +245,10 @@ describe("migrating a database created on the pre-revision schema", () => {
     db = await createDb(null);
 
     const { callTool } = await import("../src/dispatch.js");
-    const updated = (await callTool(db, "simulation", "update_contact", { id: fixture.contactId, revision: 1, stage: "inactive" })) as any;
+    const updated = (await callTool(db, "simulation", "update_contact", { id: fixture.contactId, revision: 1, stage: "inactive", contact_type: "customer" })) as any;
     expect(updated.revision).toBe(2);
 
-    const archived = (await callTool(db, "simulation", "delete_contact", { id: fixture.contactId, revision: 2 })) as any;
+    const archived = (await callTool(db, "simulation", "delete_contact", { id: fixture.contactId, revision: 2, contact_type: "customer" })) as any;
     expect(archived.archived).toBe(true);
 
     // Still no cascade: the activity and deal survive the archive too.

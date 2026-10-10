@@ -1,6 +1,7 @@
 import { v4 as uuidv4 } from "uuid";
 import type { Db } from "../db.js";
 import { requireContact, checkContactType } from "./contacts.js";
+import { refuse } from "../refuse.js";
 import { requireCurrentRevision } from "../revision.js";
 import { recordChangeMeta } from "../change-meta.js";
 
@@ -44,6 +45,16 @@ async function recordTaskRevision(db: Db, row: TaskRow, ticketId: string | null)
   );
 }
 
+/** A task with no contact has no stored type to compare with; the declaration
+ *  is still required (and must be a known type), so a call always says which
+ *  contact type it acts for. */
+function requireDeclaredType(declared: unknown): void {
+  const known = ["customer", "lead", "partner", "vendor"];
+  if (typeof declared !== "string" || !known.includes(declared)) {
+    refuse("contact_type", declared, known.join("|"), "contact_type is required: say which contact type this task is for (customer, lead, partner or vendor).");
+  }
+}
+
 export async function create_task(db: Db, args: Record<string, any>) {
   // ticket_id: Suveren mandate ticket (Content Provenance §4.1). Stored on
   // the existing receipt_id column (internal storage name, unchanged).
@@ -53,6 +64,8 @@ export async function create_task(db: Db, args: Record<string, any>) {
   if (contact_id) {
     const contact = await requireContact(db, contact_id);
     checkContactType(contact, contact_type);
+  } else {
+    requireDeclaredType(contact_type);
   }
 
   await db.run(
@@ -136,9 +149,15 @@ export async function get_task(db: Db, args: Record<string, any>) {
 export async function complete_task(db: Db, args: Record<string, any>) {
   // ticket_id: Suveren mandate ticket (Content Provenance §4.1). Stored on
   // the existing receipt_id column (internal storage name, unchanged).
-  const { id, revision, ticket_id } = args;
+  const { id, revision, contact_type, ticket_id } = args;
 
   const task = await requireTask(db, id);
+  if (task.contact_id) {
+    const contact = await requireContact(db, task.contact_id);
+    checkContactType(contact, contact_type);
+  } else {
+    requireDeclaredType(contact_type);
+  }
   requireCurrentRevision("Task", id, task.revision, revision);
 
   const nextRevision = task.revision + 1;

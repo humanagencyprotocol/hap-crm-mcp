@@ -4,7 +4,8 @@
  * next one; an action naming a stale revision is refused, naming both — the
  * same shape the ERP connector's quote revisions use. Also covers:
  * archive-instead-of-delete (contacts), convert_contact (the only way to
- * change a contact's type), and the contact_type scope check.
+ * change a contact's type), and the contact_type scope check (now required,
+ * not optional, on every tool that acts on a contact).
  */
 import { describe, it, expect, afterEach } from "vitest";
 import { tmpdir } from "os";
@@ -34,26 +35,26 @@ afterEach(async () => {
 describe("contact revisions", () => {
   it("create_contact always produces revision 1", async () => {
     await freshDb();
-    const contact = (await callTool(db, "simulation", "create_contact", { name: "Acme" })) as any;
+    const contact = (await callTool(db, "simulation", "create_contact", { name: "Acme", type: "customer" })) as any;
     expect(contact.revision).toBe(1);
     expect(contact.archived).toBe(false);
   });
 
   it("update_contact always produces the next revision, even when nothing material changes", async () => {
     await freshDb();
-    const contact = (await callTool(db, "simulation", "create_contact", { name: "Acme" })) as any;
-    const updated = (await callTool(db, "simulation", "update_contact", { id: contact.id, revision: 1, notes: "same notes" })) as any;
+    const contact = (await callTool(db, "simulation", "create_contact", { name: "Acme", type: "customer" })) as any;
+    const updated = (await callTool(db, "simulation", "update_contact", { id: contact.id, revision: 1, notes: "same notes", contact_type: "customer" })) as any;
     expect(updated.revision).toBe(2);
-    const again = (await callTool(db, "simulation", "update_contact", { id: contact.id, revision: 2, notes: "same notes" })) as any;
+    const again = (await callTool(db, "simulation", "update_contact", { id: contact.id, revision: 2, notes: "same notes", contact_type: "customer" })) as any;
     expect(again.revision).toBe(3);
   });
 
   it("update_contact refuses a stale revision, naming both revisions — nothing changes", async () => {
     await freshDb();
-    const contact = (await callTool(db, "simulation", "create_contact", { name: "Acme" })) as any;
-    await callTool(db, "simulation", "update_contact", { id: contact.id, revision: 1, stage: "active" });
+    const contact = (await callTool(db, "simulation", "create_contact", { name: "Acme", type: "customer" })) as any;
+    await callTool(db, "simulation", "update_contact", { id: contact.id, revision: 1, stage: "active", contact_type: "customer" });
 
-    const result = await callTool(db, "simulation", "update_contact", { id: contact.id, revision: 1, stage: "inactive" }).catch(
+    const result = await callTool(db, "simulation", "update_contact", { id: contact.id, revision: 1, stage: "inactive", contact_type: "customer" }).catch(
       (e) => e
     );
     expect(result).toBeInstanceOf(Error);
@@ -68,16 +69,16 @@ describe("contact revisions", () => {
 
   it("the race: create (rev 1) -> update (rev 2) -> update(revision:1) refused, update(revision:2) works", async () => {
     await freshDb();
-    const contact = (await callTool(db, "simulation", "create_contact", { name: "Acme" })) as any;
+    const contact = (await callTool(db, "simulation", "create_contact", { name: "Acme", type: "customer" })) as any;
     expect(contact.revision).toBe(1);
 
-    await callTool(db, "simulation", "update_contact", { id: contact.id, revision: 1, company: "Acme Corp" });
+    await callTool(db, "simulation", "update_contact", { id: contact.id, revision: 1, company: "Acme Corp", contact_type: "customer" });
 
-    const refused = await callTool(db, "simulation", "update_contact", { id: contact.id, revision: 1, stage: "active" }).catch((e) => e);
+    const refused = await callTool(db, "simulation", "update_contact", { id: contact.id, revision: 1, stage: "active", contact_type: "customer" }).catch((e) => e);
     expect(refused).toBeInstanceOf(Error);
     expect((refused as Error).message).toMatch(/revision/);
 
-    const ok = (await callTool(db, "simulation", "update_contact", { id: contact.id, revision: 2, stage: "active" })) as any;
+    const ok = (await callTool(db, "simulation", "update_contact", { id: contact.id, revision: 2, stage: "active", contact_type: "customer" })) as any;
     expect(ok.revision).toBe(3);
     expect(ok.stage).toBe("active");
   });
@@ -85,7 +86,7 @@ describe("contact revisions", () => {
   it("update_contact refuses changing type, pointing to convert_contact — nothing changes", async () => {
     await freshDb();
     const contact = (await callTool(db, "simulation", "create_contact", { name: "Acme", type: "lead" })) as any;
-    const result = await callTool(db, "simulation", "update_contact", { id: contact.id, revision: 1, type: "customer" }).catch((e) => e);
+    const result = await callTool(db, "simulation", "update_contact", { id: contact.id, revision: 1, type: "customer", contact_type: "lead" }).catch((e) => e);
     expect(result).toBeInstanceOf(Error);
     expect((result as Error).message).toMatch(/convert_contact/);
     const unchanged = (await callTool(db, "simulation", "get_contact", { id: contact.id })) as any;
@@ -95,8 +96,8 @@ describe("contact revisions", () => {
 
   it("get_contact with a revision argument returns that exact historical version, not the current one", async () => {
     await freshDb();
-    const contact = (await callTool(db, "simulation", "create_contact", { name: "Acme", notes: "v1" })) as any;
-    await callTool(db, "simulation", "update_contact", { id: contact.id, revision: 1, notes: "v2" });
+    const contact = (await callTool(db, "simulation", "create_contact", { name: "Acme", type: "customer", notes: "v1" })) as any;
+    await callTool(db, "simulation", "update_contact", { id: contact.id, revision: 1, notes: "v2", contact_type: "customer" });
 
     const old = (await callTool(db, "simulation", "get_contact", { id: contact.id, revision: 1 })) as any;
     expect(old.notes).toBe("v1");
@@ -109,7 +110,7 @@ describe("contact revisions", () => {
 
   it("get_contact refuses an unknown revision", async () => {
     await freshDb();
-    const contact = (await callTool(db, "simulation", "create_contact", { name: "Acme" })) as any;
+    const contact = (await callTool(db, "simulation", "create_contact", { name: "Acme", type: "customer" })) as any;
     await expect(callTool(db, "simulation", "get_contact", { id: contact.id, revision: 99 })).rejects.toThrow(/Unknown revision/);
   });
 });
@@ -117,12 +118,12 @@ describe("contact revisions", () => {
 describe("archive instead of delete", () => {
   it("delete_contact archives: no cascade, activities and deals survive", async () => {
     await freshDb();
-    const contact = (await callTool(db, "simulation", "create_contact", { name: "Acme" })) as any;
-    await callTool(db, "simulation", "log_activity", { contact_id: contact.id, type: "note", summary: "hi" });
-    const deal = (await callTool(db, "simulation", "create_deal", { contact_id: contact.id, title: "Deal" })) as any;
-    const task = (await callTool(db, "simulation", "create_task", { contact_id: contact.id, title: "Follow up" })) as any;
+    const contact = (await callTool(db, "simulation", "create_contact", { name: "Acme", type: "customer" })) as any;
+    await callTool(db, "simulation", "log_activity", { contact_id: contact.id, type: "note", summary: "hi", contact_type: "customer" });
+    const deal = (await callTool(db, "simulation", "create_deal", { contact_id: contact.id, title: "Deal", contact_type: "customer" })) as any;
+    const task = (await callTool(db, "simulation", "create_task", { contact_id: contact.id, title: "Follow up", contact_type: "customer" })) as any;
 
-    const result = (await callTool(db, "simulation", "delete_contact", { id: contact.id, revision: 1 })) as any;
+    const result = (await callTool(db, "simulation", "delete_contact", { id: contact.id, revision: 1, contact_type: "customer" })) as any;
     expect(result.archived).toBe(true);
     expect(result.revision).toBe(2);
 
@@ -139,26 +140,26 @@ describe("archive instead of delete", () => {
 
   it("delete_contact refuses on an already-archived contact", async () => {
     await freshDb();
-    const contact = (await callTool(db, "simulation", "create_contact", { name: "Acme" })) as any;
-    await callTool(db, "simulation", "delete_contact", { id: contact.id, revision: 1 });
-    const result = await callTool(db, "simulation", "delete_contact", { id: contact.id, revision: 2 }).catch((e) => e);
+    const contact = (await callTool(db, "simulation", "create_contact", { name: "Acme", type: "customer" })) as any;
+    await callTool(db, "simulation", "delete_contact", { id: contact.id, revision: 1, contact_type: "customer" });
+    const result = await callTool(db, "simulation", "delete_contact", { id: contact.id, revision: 2, contact_type: "customer" }).catch((e) => e);
     expect(result).toBeInstanceOf(Error);
     expect((result as Error).message).toMatch(/archived/);
   });
 
   it("delete_contact refuses a stale revision", async () => {
     await freshDb();
-    const contact = (await callTool(db, "simulation", "create_contact", { name: "Acme" })) as any;
-    await callTool(db, "simulation", "update_contact", { id: contact.id, revision: 1, stage: "active" });
-    const result = await callTool(db, "simulation", "delete_contact", { id: contact.id, revision: 1 }).catch((e) => e);
+    const contact = (await callTool(db, "simulation", "create_contact", { name: "Acme", type: "customer" })) as any;
+    await callTool(db, "simulation", "update_contact", { id: contact.id, revision: 1, stage: "active", contact_type: "customer" });
+    const result = await callTool(db, "simulation", "delete_contact", { id: contact.id, revision: 1, contact_type: "customer" }).catch((e) => e);
     expect(result).toBeInstanceOf(Error);
     expect((result as Error).message).toMatch(/revision/);
   });
 
   it("find_contacts excludes archived contacts by default, includes them with include_archived", async () => {
     await freshDb();
-    const contact = (await callTool(db, "simulation", "create_contact", { name: "Acme" })) as any;
-    await callTool(db, "simulation", "delete_contact", { id: contact.id, revision: 1 });
+    const contact = (await callTool(db, "simulation", "create_contact", { name: "Acme", type: "customer" })) as any;
+    await callTool(db, "simulation", "delete_contact", { id: contact.id, revision: 1, contact_type: "customer" });
 
     expect(await callTool(db, "simulation", "find_contacts", {})).toEqual([]);
     const withArchived = (await callTool(db, "simulation", "find_contacts", { include_archived: true })) as any[];
@@ -168,9 +169,9 @@ describe("archive instead of delete", () => {
 
   it("get_pipeline excludes deals whose contact is archived by default, includes them with include_archived", async () => {
     await freshDb();
-    const contact = (await callTool(db, "simulation", "create_contact", { name: "Acme" })) as any;
-    await callTool(db, "simulation", "create_deal", { contact_id: contact.id, title: "Deal" });
-    await callTool(db, "simulation", "delete_contact", { id: contact.id, revision: 1 });
+    const contact = (await callTool(db, "simulation", "create_contact", { name: "Acme", type: "customer" })) as any;
+    await callTool(db, "simulation", "create_deal", { contact_id: contact.id, title: "Deal", contact_type: "customer" });
+    await callTool(db, "simulation", "delete_contact", { id: contact.id, revision: 1, contact_type: "customer" });
 
     expect(await callTool(db, "simulation", "get_pipeline", {})).toEqual([]);
     const withArchived = (await callTool(db, "simulation", "get_pipeline", { include_archived: true })) as any[];
@@ -179,9 +180,9 @@ describe("archive instead of delete", () => {
 
   it("restore_contact brings an archived contact back", async () => {
     await freshDb();
-    const contact = (await callTool(db, "simulation", "create_contact", { name: "Acme" })) as any;
-    await callTool(db, "simulation", "delete_contact", { id: contact.id, revision: 1 });
-    const restored = (await callTool(db, "simulation", "restore_contact", { id: contact.id, revision: 2 })) as any;
+    const contact = (await callTool(db, "simulation", "create_contact", { name: "Acme", type: "customer" })) as any;
+    await callTool(db, "simulation", "delete_contact", { id: contact.id, revision: 1, contact_type: "customer" });
+    const restored = (await callTool(db, "simulation", "restore_contact", { id: contact.id, revision: 2, contact_type: "customer" })) as any;
     expect(restored.archived).toBe(false);
     expect(restored.revision).toBe(3);
     expect(await callTool(db, "simulation", "find_contacts", {})).toHaveLength(1);
@@ -189,27 +190,54 @@ describe("archive instead of delete", () => {
 
   it("restore_contact refuses a contact that is not archived", async () => {
     await freshDb();
-    const contact = (await callTool(db, "simulation", "create_contact", { name: "Acme" })) as any;
-    const result = await callTool(db, "simulation", "restore_contact", { id: contact.id, revision: 1 }).catch((e) => e);
+    const contact = (await callTool(db, "simulation", "create_contact", { name: "Acme", type: "customer" })) as any;
+    const result = await callTool(db, "simulation", "restore_contact", { id: contact.id, revision: 1, contact_type: "customer" }).catch((e) => e);
     expect(result).toBeInstanceOf(Error);
     expect((result as Error).message).toMatch(/not archived/);
   });
 
   it("restore_contact refuses a stale revision", async () => {
     await freshDb();
-    const contact = (await callTool(db, "simulation", "create_contact", { name: "Acme" })) as any;
-    await callTool(db, "simulation", "delete_contact", { id: contact.id, revision: 1 });
-    const result = await callTool(db, "simulation", "restore_contact", { id: contact.id, revision: 1 }).catch((e) => e);
+    const contact = (await callTool(db, "simulation", "create_contact", { name: "Acme", type: "customer" })) as any;
+    await callTool(db, "simulation", "delete_contact", { id: contact.id, revision: 1, contact_type: "customer" });
+    const result = await callTool(db, "simulation", "restore_contact", { id: contact.id, revision: 1, contact_type: "customer" }).catch((e) => e);
     expect(result).toBeInstanceOf(Error);
     expect((result as Error).message).toMatch(/revision/);
   });
 });
 
 describe("convert_contact — the only way to change type", () => {
+  it("declares both types, current and new — a single type is refused, nothing changes", async () => {
+    await freshDb();
+    const contact = (await callTool(db, "simulation", "create_contact", { name: "Acme", type: "customer" })) as any;
+    const result = await callTool(db, "simulation", "convert_contact", { id: contact.id, revision: 1, to_type: "lead", contact_type: "customer" }).catch((e) => e);
+    expect(result).toBeInstanceOf(Error);
+    expect((result as Error).message).toMatch(/declares both types, the current and the new one, as "<current>,<new>" — here "customer,lead"/);
+    const unchanged = (await callTool(db, "simulation", "get_contact", { id: contact.id })) as any;
+    expect(unchanged.type).toBe("customer");
+    expect(unchanged.revision).toBe(1);
+  });
+
+  it("refuses when the declared new type is not the requested to_type", async () => {
+    await freshDb();
+    const contact = (await callTool(db, "simulation", "create_contact", { name: "Acme", type: "customer" })) as any;
+    const result = await callTool(db, "simulation", "convert_contact", { id: contact.id, revision: 1, to_type: "vendor", contact_type: "customer,lead" }).catch((e) => e);
+    expect(result).toBeInstanceOf(Error);
+    expect((result as Error).message).toMatch(/declared new type "lead" is not the requested to_type "vendor"/);
+  });
+
+  it("refuses when the declared current type is not the stored one", async () => {
+    await freshDb();
+    const contact = (await callTool(db, "simulation", "create_contact", { name: "Acme", type: "lead" })) as any;
+    const result = await callTool(db, "simulation", "convert_contact", { id: contact.id, revision: 1, to_type: "vendor", contact_type: "customer,vendor" }).catch((e) => e);
+    expect(result).toBeInstanceOf(Error);
+    expect((result as Error).message).toMatch(/is type "lead"; this request declares "customer"/);
+  });
+
   it("converts a lead to a customer, logged as its own action", async () => {
     await freshDb();
     const contact = (await callTool(db, "simulation", "create_contact", { name: "Acme", type: "lead" })) as any;
-    const converted = (await callTool(db, "simulation", "convert_contact", { id: contact.id, revision: 1, to_type: "customer", ticket_id: "t-conv" })) as any;
+    const converted = (await callTool(db, "simulation", "convert_contact", { id: contact.id, revision: 1, to_type: "customer", contact_type: "lead,customer", ticket_id: "t-conv" })) as any;
     expect(converted.type).toBe("customer");
     expect(converted.revision).toBe(2);
 
@@ -220,7 +248,7 @@ describe("convert_contact — the only way to change type", () => {
   it("refuses converting to the contact's current type", async () => {
     await freshDb();
     const contact = (await callTool(db, "simulation", "create_contact", { name: "Acme", type: "lead" })) as any;
-    const result = await callTool(db, "simulation", "convert_contact", { id: contact.id, revision: 1, to_type: "lead" }).catch((e) => e);
+    const result = await callTool(db, "simulation", "convert_contact", { id: contact.id, revision: 1, to_type: "lead", contact_type: "lead,lead" }).catch((e) => e);
     expect(result).toBeInstanceOf(Error);
     expect((result as Error).message).toMatch(/already type/);
   });
@@ -228,8 +256,8 @@ describe("convert_contact — the only way to change type", () => {
   it("refuses an archived contact", async () => {
     await freshDb();
     const contact = (await callTool(db, "simulation", "create_contact", { name: "Acme", type: "lead" })) as any;
-    await callTool(db, "simulation", "delete_contact", { id: contact.id, revision: 1 });
-    const result = await callTool(db, "simulation", "convert_contact", { id: contact.id, revision: 2, to_type: "customer" }).catch((e) => e);
+    await callTool(db, "simulation", "delete_contact", { id: contact.id, revision: 1, contact_type: "lead" });
+    const result = await callTool(db, "simulation", "convert_contact", { id: contact.id, revision: 2, to_type: "customer", contact_type: "lead,customer" }).catch((e) => e);
     expect(result).toBeInstanceOf(Error);
     expect((result as Error).message).toMatch(/archived/);
   });
@@ -237,8 +265,8 @@ describe("convert_contact — the only way to change type", () => {
   it("refuses a stale revision, naming both", async () => {
     await freshDb();
     const contact = (await callTool(db, "simulation", "create_contact", { name: "Acme", type: "lead" })) as any;
-    await callTool(db, "simulation", "update_contact", { id: contact.id, revision: 1, stage: "active" });
-    const result = await callTool(db, "simulation", "convert_contact", { id: contact.id, revision: 1, to_type: "customer" }).catch((e) => e);
+    await callTool(db, "simulation", "update_contact", { id: contact.id, revision: 1, stage: "active", contact_type: "lead" });
+    const result = await callTool(db, "simulation", "convert_contact", { id: contact.id, revision: 1, to_type: "customer", contact_type: "lead,customer" }).catch((e) => e);
     expect(result).toBeInstanceOf(Error);
     expect((result as Error).message).toMatch(/revision/);
   });
@@ -297,7 +325,7 @@ describe("contact_type — the connector checks the record's real type, not just
   it("update_deal refuses on a contact_type mismatch (checked via the deal's own contact)", async () => {
     await freshDb();
     const contact = (await callTool(db, "simulation", "create_contact", { name: "Acme", type: "lead" })) as any;
-    const deal = (await callTool(db, "simulation", "create_deal", { contact_id: contact.id, title: "Deal" })) as any;
+    const deal = (await callTool(db, "simulation", "create_deal", { contact_id: contact.id, title: "Deal", contact_type: "lead" })) as any;
     const result = await callTool(db, "simulation", "update_deal", {
       id: deal.id, revision: 1, stage: "qualified", contact_type: "customer",
     }).catch((e) => e);
@@ -315,30 +343,166 @@ describe("contact_type — the connector checks the record's real type, not just
     expect((result as Error).message).toMatch(/contact_type/);
   });
 
-  it("an undeclared contact_type makes no claim, and is not checked", async () => {
+  it("an undeclared contact_type is refused, not silently allowed — nothing changes", async () => {
     await freshDb();
     const contact = (await callTool(db, "simulation", "create_contact", { name: "Acme", type: "lead" })) as any;
-    const result = (await callTool(db, "simulation", "update_contact", { id: contact.id, revision: 1, stage: "active" })) as any;
-    expect(result.stage).toBe("active");
+    const result = await callTool(db, "simulation", "update_contact", { id: contact.id, revision: 1, stage: "active" }).catch((e) => e);
+    expect(result).toBeInstanceOf(Error);
+    expect((result as Error).message).toMatch(/contact_type is required/);
+    const unchanged = (await callTool(db, "simulation", "get_contact", { id: contact.id })) as any;
+    expect(unchanged.stage).toBe("new");
+    expect(unchanged.revision).toBe(1);
+  });
+});
+
+describe("contact_type is required — a call that does not declare it is refused, unchanged", () => {
+  it("update_contact refuses when contact_type is missing", async () => {
+    await freshDb();
+    const contact = (await callTool(db, "simulation", "create_contact", { name: "Acme", type: "customer" })) as any;
+    const result = await callTool(db, "simulation", "update_contact", { id: contact.id, revision: 1, stage: "active" }).catch((e) => e);
+    expect(result).toBeInstanceOf(Error);
+    expect((result as Error).message).toMatch(/contact_type is required/);
+    const unchanged = (await callTool(db, "simulation", "get_contact", { id: contact.id })) as any;
+    expect(unchanged.revision).toBe(1);
+    expect(unchanged.stage).toBe("new");
+  });
+
+  it("delete_contact refuses when contact_type is missing", async () => {
+    await freshDb();
+    const contact = (await callTool(db, "simulation", "create_contact", { name: "Acme", type: "customer" })) as any;
+    const result = await callTool(db, "simulation", "delete_contact", { id: contact.id, revision: 1 }).catch((e) => e);
+    expect(result).toBeInstanceOf(Error);
+    expect((result as Error).message).toMatch(/contact_type is required/);
+    const unchanged = (await callTool(db, "simulation", "get_contact", { id: contact.id })) as any;
+    expect(unchanged.archived).toBe(false);
+    expect(unchanged.revision).toBe(1);
+  });
+
+  it("restore_contact refuses when contact_type is missing", async () => {
+    await freshDb();
+    const contact = (await callTool(db, "simulation", "create_contact", { name: "Acme", type: "customer" })) as any;
+    await callTool(db, "simulation", "delete_contact", { id: contact.id, revision: 1, contact_type: "customer" });
+    const result = await callTool(db, "simulation", "restore_contact", { id: contact.id, revision: 2 }).catch((e) => e);
+    expect(result).toBeInstanceOf(Error);
+    expect((result as Error).message).toMatch(/contact_type is required/);
+    const unchanged = (await callTool(db, "simulation", "get_contact", { id: contact.id })) as any;
+    expect(unchanged.archived).toBe(true);
+    expect(unchanged.revision).toBe(2);
+  });
+
+  it("convert_contact refuses when contact_type is missing", async () => {
+    await freshDb();
+    const contact = (await callTool(db, "simulation", "create_contact", { name: "Acme", type: "lead" })) as any;
+    const result = await callTool(db, "simulation", "convert_contact", { id: contact.id, revision: 1, to_type: "customer" }).catch((e) => e);
+    expect(result).toBeInstanceOf(Error);
+    expect((result as Error).message).toMatch(/declares both types/);
+    const unchanged = (await callTool(db, "simulation", "get_contact", { id: contact.id })) as any;
+    expect(unchanged.type).toBe("lead");
+    expect(unchanged.revision).toBe(1);
+  });
+
+  it("log_activity refuses when contact_type is missing", async () => {
+    await freshDb();
+    const contact = (await callTool(db, "simulation", "create_contact", { name: "Acme", type: "customer" })) as any;
+    const result = await callTool(db, "simulation", "log_activity", { contact_id: contact.id, type: "note", summary: "hi" }).catch((e) => e);
+    expect(result).toBeInstanceOf(Error);
+    expect((result as Error).message).toMatch(/contact_type is required/);
+    expect(await db.all(`SELECT * FROM activities`)).toHaveLength(0);
+  });
+
+  it("create_deal refuses when contact_type is missing", async () => {
+    await freshDb();
+    const contact = (await callTool(db, "simulation", "create_contact", { name: "Acme", type: "customer" })) as any;
+    const result = await callTool(db, "simulation", "create_deal", { contact_id: contact.id, title: "Deal" }).catch((e) => e);
+    expect(result).toBeInstanceOf(Error);
+    expect((result as Error).message).toMatch(/contact_type is required/);
+    expect(await db.all(`SELECT * FROM deals`)).toHaveLength(0);
+  });
+
+  it("update_deal refuses when contact_type is missing", async () => {
+    await freshDb();
+    const contact = (await callTool(db, "simulation", "create_contact", { name: "Acme", type: "customer" })) as any;
+    const deal = (await callTool(db, "simulation", "create_deal", { contact_id: contact.id, title: "Deal", contact_type: "customer" })) as any;
+    const result = await callTool(db, "simulation", "update_deal", { id: deal.id, revision: 1, stage: "qualified" }).catch((e) => e);
+    expect(result).toBeInstanceOf(Error);
+    expect((result as Error).message).toMatch(/contact_type is required/);
+    const unchanged = (await callTool(db, "simulation", "get_deal", { id: deal.id })) as any;
+    expect(unchanged.revision).toBe(1);
+    expect(unchanged.stage).toBe("lead");
+  });
+
+  it("create_task refuses when contact_type is missing, with a contact_id given", async () => {
+    await freshDb();
+    const contact = (await callTool(db, "simulation", "create_contact", { name: "Acme", type: "customer" })) as any;
+    const result = await callTool(db, "simulation", "create_task", { title: "Follow up", contact_id: contact.id }).catch((e) => e);
+    expect(result).toBeInstanceOf(Error);
+    expect((result as Error).message).toMatch(/contact_type is required/);
+    expect(await db.all(`SELECT * FROM tasks`)).toHaveLength(0);
+  });
+
+  it("complete_task refuses when contact_type is missing", async () => {
+    await freshDb();
+    const contact = (await callTool(db, "simulation", "create_contact", { name: "Acme", type: "customer" })) as any;
+    const task = (await callTool(db, "simulation", "create_task", { title: "Follow up", contact_id: contact.id, contact_type: "customer" })) as any;
+    const result = await callTool(db, "simulation", "complete_task", { id: task.id, revision: 1 }).catch((e) => e);
+    expect(result).toBeInstanceOf(Error);
+    expect((result as Error).message).toMatch(/contact_type is required/);
+    const unchanged = (await callTool(db, "simulation", "get_task", { id: task.id })) as any;
+    expect(unchanged.status).toBe("open");
+    expect(unchanged.revision).toBe(1);
+  });
+
+  it("create_task without a contact_id and without contact_type is refused — a task with no contact still must say which type it is for", async () => {
+    await freshDb();
+    const result = await callTool(db, "simulation", "create_task", { title: "Standalone" }).catch((e) => e);
+    expect(result).toBeInstanceOf(Error);
+    expect((result as Error).message).toMatch(/contact_type is required/);
+    expect(await db.all(`SELECT * FROM tasks`)).toHaveLength(0);
+  });
+});
+
+describe("contact_type mismatch — restore_contact and complete_task check the real type too", () => {
+  it("restore_contact refuses when the declared contact_type does not match the real one", async () => {
+    await freshDb();
+    const contact = (await callTool(db, "simulation", "create_contact", { name: "Acme", type: "lead" })) as any;
+    await callTool(db, "simulation", "delete_contact", { id: contact.id, revision: 1, contact_type: "lead" });
+    const result = await callTool(db, "simulation", "restore_contact", { id: contact.id, revision: 2, contact_type: "customer" }).catch((e) => e);
+    expect(result).toBeInstanceOf(Error);
+    expect((result as Error).message).toMatch(/contact_type/);
+    const unchanged = (await callTool(db, "simulation", "get_contact", { id: contact.id })) as any;
+    expect(unchanged.archived).toBe(true);
+    expect(unchanged.revision).toBe(2);
+  });
+
+  it("complete_task refuses when the declared contact_type does not match the task's contact's real type", async () => {
+    await freshDb();
+    const contact = (await callTool(db, "simulation", "create_contact", { name: "Acme", type: "lead" })) as any;
+    const task = (await callTool(db, "simulation", "create_task", { title: "Follow up", contact_id: contact.id, contact_type: "lead" })) as any;
+    const result = await callTool(db, "simulation", "complete_task", { id: task.id, revision: 1, contact_type: "customer" }).catch((e) => e);
+    expect(result).toBeInstanceOf(Error);
+    expect((result as Error).message).toMatch(/contact_type/);
+    const unchanged = (await callTool(db, "simulation", "get_task", { id: task.id })) as any;
+    expect(unchanged.status).toBe("open");
+    expect(unchanged.revision).toBe(1);
   });
 });
 
 describe("deal revisions", () => {
   it("create_deal always produces revision 1; update_deal produces the next", async () => {
     await freshDb();
-    const contact = (await callTool(db, "simulation", "create_contact", { name: "Acme" })) as any;
-    const deal = (await callTool(db, "simulation", "create_deal", { contact_id: contact.id, title: "Deal" })) as any;
+    const contact = (await callTool(db, "simulation", "create_contact", { name: "Acme", type: "customer" })) as any;
+    const deal = (await callTool(db, "simulation", "create_deal", { contact_id: contact.id, title: "Deal", contact_type: "customer" })) as any;
     expect(deal.revision).toBe(1);
-    const updated = (await callTool(db, "simulation", "update_deal", { id: deal.id, revision: 1, stage: "qualified" })) as any;
+    const updated = (await callTool(db, "simulation", "update_deal", { id: deal.id, revision: 1, stage: "qualified", contact_type: "customer" })) as any;
     expect(updated.revision).toBe(2);
   });
 
   it("update_deal refuses a stale revision, naming both", async () => {
     await freshDb();
-    const contact = (await callTool(db, "simulation", "create_contact", { name: "Acme" })) as any;
-    const deal = (await callTool(db, "simulation", "create_deal", { contact_id: contact.id, title: "Deal" })) as any;
-    await callTool(db, "simulation", "update_deal", { id: deal.id, revision: 1, stage: "qualified" });
-    const result = await callTool(db, "simulation", "update_deal", { id: deal.id, revision: 1, stage: "proposal" }).catch((e) => e);
+    const contact = (await callTool(db, "simulation", "create_contact", { name: "Acme", type: "customer" })) as any;
+    const deal = (await callTool(db, "simulation", "create_deal", { contact_id: contact.id, title: "Deal", contact_type: "customer" })) as any;
+    await callTool(db, "simulation", "update_deal", { id: deal.id, revision: 1, stage: "qualified", contact_type: "customer" });
+    const result = await callTool(db, "simulation", "update_deal", { id: deal.id, revision: 1, stage: "proposal", contact_type: "customer" }).catch((e) => e);
     expect(result).toBeInstanceOf(Error);
     expect((result as Error).message).toContain(`Deal ${deal.id} is at revision 2`);
     expect((result as Error).message).toContain("this request is for revision 1");
@@ -346,9 +510,9 @@ describe("deal revisions", () => {
 
   it("get_deal with a revision argument returns the historical content", async () => {
     await freshDb();
-    const contact = (await callTool(db, "simulation", "create_contact", { name: "Acme" })) as any;
-    const deal = (await callTool(db, "simulation", "create_deal", { contact_id: contact.id, title: "Deal", stage: "lead" })) as any;
-    await callTool(db, "simulation", "update_deal", { id: deal.id, revision: 1, stage: "qualified" });
+    const contact = (await callTool(db, "simulation", "create_contact", { name: "Acme", type: "customer" })) as any;
+    const deal = (await callTool(db, "simulation", "create_deal", { contact_id: contact.id, title: "Deal", stage: "lead", contact_type: "customer" })) as any;
+    await callTool(db, "simulation", "update_deal", { id: deal.id, revision: 1, stage: "qualified", contact_type: "customer" });
 
     const old = (await callTool(db, "simulation", "get_deal", { id: deal.id, revision: 1 })) as any;
     expect(old.stage).toBe("lead");
@@ -360,18 +524,18 @@ describe("deal revisions", () => {
 describe("task revisions", () => {
   it("create_task always produces revision 1; complete_task produces the next", async () => {
     await freshDb();
-    const task = (await callTool(db, "simulation", "create_task", { title: "Follow up" })) as any;
+    const task = (await callTool(db, "simulation", "create_task", { title: "Follow up", contact_type: "customer" })) as any;
     expect(task.revision).toBe(1);
-    const completed = (await callTool(db, "simulation", "complete_task", { id: task.id, revision: 1 })) as any;
+    const completed = (await callTool(db, "simulation", "complete_task", { id: task.id, revision: 1, contact_type: "customer" })) as any;
     expect(completed.revision).toBe(2);
     expect(completed.status).toBe("done");
   });
 
   it("complete_task refuses a stale revision, naming both", async () => {
     await freshDb();
-    const task = (await callTool(db, "simulation", "create_task", { title: "Follow up" })) as any;
-    await callTool(db, "simulation", "complete_task", { id: task.id, revision: 1 });
-    const result = await callTool(db, "simulation", "complete_task", { id: task.id, revision: 1 }).catch((e) => e);
+    const task = (await callTool(db, "simulation", "create_task", { title: "Follow up", contact_type: "customer" })) as any;
+    await callTool(db, "simulation", "complete_task", { id: task.id, revision: 1, contact_type: "customer" });
+    const result = await callTool(db, "simulation", "complete_task", { id: task.id, revision: 1, contact_type: "customer" }).catch((e) => e);
     expect(result).toBeInstanceOf(Error);
     expect((result as Error).message).toContain(`Task ${task.id} is at revision 2`);
     expect((result as Error).message).toContain("this request is for revision 1");
@@ -379,8 +543,8 @@ describe("task revisions", () => {
 
   it("get_task with a revision argument returns the historical content", async () => {
     await freshDb();
-    const task = (await callTool(db, "simulation", "create_task", { title: "Follow up" })) as any;
-    await callTool(db, "simulation", "complete_task", { id: task.id, revision: 1 });
+    const task = (await callTool(db, "simulation", "create_task", { title: "Follow up", contact_type: "customer" })) as any;
+    await callTool(db, "simulation", "complete_task", { id: task.id, revision: 1, contact_type: "customer" });
 
     const old = (await callTool(db, "simulation", "get_task", { id: task.id, revision: 1 })) as any;
     expect(old.status).toBe("open");
@@ -392,8 +556,8 @@ describe("task revisions", () => {
 describe("the change log carries revision and old/new values", () => {
   it("records the resulting revision, and the changed fields' old/new values, on update_contact", async () => {
     await freshDb();
-    const contact = (await callTool(db, "simulation", "create_contact", { name: "Acme", stage: "new" })) as any;
-    await callTool(db, "simulation", "update_contact", { id: contact.id, revision: 1, stage: "active" });
+    const contact = (await callTool(db, "simulation", "create_contact", { name: "Acme", type: "customer", stage: "new" })) as any;
+    await callTool(db, "simulation", "update_contact", { id: contact.id, revision: 1, stage: "active", contact_type: "customer" });
 
     const rows = await db.all<any>(`SELECT revision, old_values, new_values FROM changes WHERE tool = 'update_contact'`);
     expect(rows).toHaveLength(1);
@@ -404,17 +568,17 @@ describe("the change log carries revision and old/new values", () => {
 
   it("records a null revision for activities (they carry none)", async () => {
     await freshDb();
-    const contact = (await callTool(db, "simulation", "create_contact", { name: "Acme" })) as any;
-    await callTool(db, "simulation", "log_activity", { contact_id: contact.id, type: "note", summary: "hi" });
+    const contact = (await callTool(db, "simulation", "create_contact", { name: "Acme", type: "customer" })) as any;
+    await callTool(db, "simulation", "log_activity", { contact_id: contact.id, type: "note", summary: "hi", contact_type: "customer" });
     const rows = await db.all<any>(`SELECT revision FROM changes WHERE tool = 'log_activity'`);
     expect(rows).toEqual([{ revision: null }]);
   });
 
   it("records old/new values for delete_contact (archived false -> true) and restore_contact (true -> false)", async () => {
     await freshDb();
-    const contact = (await callTool(db, "simulation", "create_contact", { name: "Acme" })) as any;
-    await callTool(db, "simulation", "delete_contact", { id: contact.id, revision: 1 });
-    await callTool(db, "simulation", "restore_contact", { id: contact.id, revision: 2 });
+    const contact = (await callTool(db, "simulation", "create_contact", { name: "Acme", type: "customer" })) as any;
+    await callTool(db, "simulation", "delete_contact", { id: contact.id, revision: 1, contact_type: "customer" });
+    await callTool(db, "simulation", "restore_contact", { id: contact.id, revision: 2, contact_type: "customer" });
 
     const deleteRow = await db.get<any>(`SELECT old_values, new_values FROM changes WHERE tool = 'delete_contact'`);
     expect(JSON.parse(deleteRow.old_values)).toEqual({ archived: false });

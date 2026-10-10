@@ -147,7 +147,7 @@ describe("company file (shared format with the ERP connector)", () => {
 describe("changes and refusals", () => {
   it("records a successful change as a change, not a refusal", async () => {
     await freshDb();
-    const contact = (await callTool(db, "simulation", "create_contact", { name: "Nova Systems", ticket_id: "t-ok" })) as any;
+    const contact = (await callTool(db, "simulation", "create_contact", { name: "Nova Systems", type: "customer", ticket_id: "t-ok" })) as any;
     expect(await db.all(`SELECT * FROM refusals`)).toHaveLength(0);
     expect(await db.all<any>(`SELECT tool, receipt_id, document_id, summary FROM changes`)).toEqual([
       { tool: "create_contact", receipt_id: "t-ok", document_id: contact.id, summary: "customer/new" },
@@ -156,8 +156,8 @@ describe("changes and refusals", () => {
 
   it("keeps one change row per ticket even when several tickets act on the same contact", async () => {
     await freshDb();
-    const contact = (await callTool(db, "simulation", "create_contact", { name: "Nova Systems", ticket_id: "t-create" })) as any;
-    await callTool(db, "simulation", "update_contact", { id: contact.id, revision: 1, stage: "active", ticket_id: "t-update" });
+    const contact = (await callTool(db, "simulation", "create_contact", { name: "Nova Systems", type: "customer", ticket_id: "t-create" })) as any;
+    await callTool(db, "simulation", "update_contact", { id: contact.id, revision: 1, stage: "active", contact_type: "customer", ticket_id: "t-update" });
     expect(await db.all<any>(`SELECT tool, receipt_id, document_id FROM changes ORDER BY at`)).toEqual([
       { tool: "create_contact", receipt_id: "t-create", document_id: contact.id },
       { tool: "update_contact", receipt_id: "t-update", document_id: contact.id },
@@ -178,8 +178,8 @@ describe("changes and refusals", () => {
     // delete_contact's schema declares ticket_id — this just exercises the
     // caller not supplying it, same as any other optional field.
     await freshDb();
-    const contact = (await callTool(db, "simulation", "create_contact", { name: "To Delete" })) as any;
-    await callTool(db, "simulation", "delete_contact", { id: contact.id, revision: 1 });
+    const contact = (await callTool(db, "simulation", "create_contact", { name: "To Delete", type: "customer" })) as any;
+    await callTool(db, "simulation", "delete_contact", { id: contact.id, revision: 1, contact_type: "customer" });
     const rows = await db.all<any>(`SELECT tool, receipt_id, document_id FROM changes WHERE tool = 'delete_contact'`);
     expect(rows).toEqual([{ tool: "delete_contact", receipt_id: null, document_id: contact.id }]);
   });
@@ -188,8 +188,8 @@ describe("changes and refusals", () => {
     // complete_task's schema declares ticket_id — see load-simulation.test.ts
     // for the case where the gateway DOES supply one.
     await freshDb();
-    const task = (await callTool(db, "simulation", "create_task", { title: "Follow up", ticket_id: "t-task" })) as any;
-    await callTool(db, "simulation", "complete_task", { id: task.id, revision: 1 });
+    const task = (await callTool(db, "simulation", "create_task", { title: "Follow up", contact_type: "customer", ticket_id: "t-task" })) as any;
+    await callTool(db, "simulation", "complete_task", { id: task.id, revision: 1, contact_type: "customer" });
     const rows = await db.all<any>(`SELECT tool, receipt_id, document_id FROM changes WHERE tool = 'complete_task'`);
     expect(rows).toEqual([{ tool: "complete_task", receipt_id: null, document_id: task.id }]);
   });
@@ -202,7 +202,7 @@ describe("changes and refusals", () => {
 
   it("records no change for a successful read", async () => {
     await freshDb();
-    await callTool(db, "simulation", "create_contact", { name: "Reader Test" });
+    await callTool(db, "simulation", "create_contact", { name: "Reader Test", type: "customer" });
     await callTool(db, "simulation", "find_contacts", {});
     expect(await db.all<any>(`SELECT tool FROM changes`)).toEqual([{ tool: "create_contact" }]);
   });
@@ -216,9 +216,9 @@ describe("changes and refusals", () => {
 
   it("logging an activity and creating a deal are recorded with the right summaries", async () => {
     await freshDb();
-    const contact = (await callTool(db, "simulation", "create_contact", { name: "Acme" })) as any;
-    await callTool(db, "simulation", "log_activity", { contact_id: contact.id, type: "call", summary: "intro call", ticket_id: "t-act" });
-    await callTool(db, "simulation", "create_deal", { contact_id: contact.id, title: "Acme renewal", stage: "proposal", ticket_id: "t-deal" });
+    const contact = (await callTool(db, "simulation", "create_contact", { name: "Acme", type: "customer" })) as any;
+    await callTool(db, "simulation", "log_activity", { contact_id: contact.id, type: "call", summary: "intro call", contact_type: "customer", ticket_id: "t-act" });
+    await callTool(db, "simulation", "create_deal", { contact_id: contact.id, title: "Acme renewal", stage: "proposal", contact_type: "customer", ticket_id: "t-deal" });
     const rows = await db.all<any>(`SELECT tool, receipt_id, summary FROM changes WHERE tool != 'create_contact' ORDER BY at`);
     expect(rows).toEqual([
       { tool: "log_activity", receipt_id: "t-act", summary: "call" },
@@ -228,7 +228,7 @@ describe("changes and refusals", () => {
 
   it("records the ticket_id argument from a call (v0.7 wire rename — stored in the receipt_id column)", async () => {
     await freshDb();
-    const contact = (await callTool(db, "simulation", "create_contact", { name: "Wire Co", ticket_id: "t-wire" })) as any;
+    const contact = (await callTool(db, "simulation", "create_contact", { name: "Wire Co", type: "customer", ticket_id: "t-wire" })) as any;
     const rows = await db.all<any>(`SELECT receipt_id FROM changes WHERE tool = 'create_contact'`);
     expect(rows).toEqual([{ receipt_id: "t-wire" }]);
     const row = await db.get<any>(`SELECT receipt_id FROM contacts WHERE id = ?`, [contact.id]);
@@ -239,7 +239,7 @@ describe("changes and refusals", () => {
 describe("export", () => {
   it("lines up changes and refusals by ticket_id, and states the mode", async () => {
     await freshDb();
-    const contact = (await callTool(db, "simulation", "create_contact", { name: "Acme", ticket_id: "t-create" })) as any;
+    const contact = (await callTool(db, "simulation", "create_contact", { name: "Acme", type: "customer", ticket_id: "t-create" })) as any;
     await expect(callTool(db, "simulation", "update_contact", { id: "nope", name: "X", ticket_id: "t-false" })).rejects.toThrow();
 
     const rec = await exportRecord(db, "simulation");

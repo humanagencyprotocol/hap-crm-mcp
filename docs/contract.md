@@ -86,25 +86,32 @@ one, and is refused the same way on a stale revision.
 `update_contact` never changes a contact's `type` — passing `type` to it is
 refused, naming `convert_contact` as the way to do it. Changing a contact's
 type (for example, a lead becoming a customer) is its own action,
-`convert_contact { id, revision, to_type }`, logged as its own entry in the
+`convert_contact { id, revision, to_type, contact_type: "<current>,<new>" }`, logged as its own entry in the
 change record. It follows the revision rule like any other write on a
 contact, and is refused if `to_type` equals the contact's current type, or if
 the contact is archived.
 
 ## The contact_type scope check
 
-Every tool that writes to an existing contact, or to a deal, activity, or
-task tied to one, accepts an optional `contact_type` argument: the type a
-governing layer outside this connector is authorizing the call for (a
-"customers only" authority, for example). When present, the connector
-compares it against the contact's **real stored type** — not a claim passed
-in by whatever authorized the call — and refuses on mismatch, naming both
-types. An absent `contact_type` makes no claim and is not checked.
+Every tool that changes something requires a `contact_type` argument: the
+contact type the call acts on, which a governing layer outside this
+connector checks against what the caller is authorized for (a "customers
+only" authority, for example). The connector compares it against the
+contact's **real stored type** — not a claim — and refuses on mismatch,
+naming both types. A missing `contact_type` is refused too: a call that does
+not say which type it acts on cannot be shown to stay within such an
+authority.
 
-This applies to `update_contact`, `delete_contact`, `restore_contact` (via
-the contact itself), `convert_contact`, `log_activity`, `create_deal`,
-`update_deal` (via the deal's own `contact_id`), and `create_task` (when a
-`contact_id` is given).
+This applies to `update_contact`, `delete_contact`, `restore_contact`,
+`log_activity`, `create_deal`, `update_deal` (via the deal's own
+`contact_id`), `create_task` and `complete_task` (via the task's contact; a
+task without a contact must still declare a known type). `create_contact`
+requires `type`, which is the contact type it creates.
+
+`convert_contact` moves a contact from one type to another, so it declares
+**both**: `contact_type` is `"<current>,<new>"` (for example
+`"lead,customer"`). The current type is checked against the stored type, and
+the new one must equal `to_type` — an authority must cover both types.
 
 ## Tools
 

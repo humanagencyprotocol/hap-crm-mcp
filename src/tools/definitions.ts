@@ -11,7 +11,7 @@ const CONTACT_TYPE_FIELD = {
   type: "string" as const,
   enum: ["customer", "lead", "partner", "vendor"],
   description:
-    "Optional — the contact type this call is authorized for. When present, checked against the contact's actual stored type and refused on mismatch.",
+    "Required — the contact type this call acts on (for a task without a contact: the type it is for). Checked against the contact's actual stored type; refused if missing or on mismatch.",
 };
 
 const REVISION_FIELD = (doc: string) => ({
@@ -98,7 +98,7 @@ export const TOOL_DEFINITIONS = [
         notes: { type: "string", description: "Free-form notes" },
         ticket_id: TICKET_FIELD,
       },
-      required: ["name"],
+      required: ["name", "type"],
     },
   },
   {
@@ -168,7 +168,7 @@ export const TOOL_DEFINITIONS = [
         contact_type: CONTACT_TYPE_FIELD,
         ticket_id: TICKET_FIELD,
       },
-      required: ["id", "revision"],
+      required: ["id", "revision", "contact_type"],
     },
   },
   {
@@ -186,7 +186,7 @@ export const TOOL_DEFINITIONS = [
         contact_type: CONTACT_TYPE_FIELD,
         ticket_id: TICKET_FIELD,
       },
-      required: ["id", "revision"],
+      required: ["id", "revision", "contact_type"],
     },
   },
   {
@@ -200,9 +200,10 @@ export const TOOL_DEFINITIONS = [
       properties: {
         id: { type: "string", description: "Contact ID" },
         revision: REVISION_FIELD("contact"),
+        contact_type: CONTACT_TYPE_FIELD,
         ticket_id: TICKET_FIELD,
       },
-      required: ["id", "revision"],
+      required: ["id", "revision", "contact_type"],
     },
   },
   {
@@ -222,10 +223,14 @@ export const TOOL_DEFINITIONS = [
           enum: ["customer", "lead", "partner", "vendor"],
           description: "The type to convert this contact to",
         },
-        contact_type: CONTACT_TYPE_FIELD,
+        contact_type: {
+          type: "string" as const,
+          description:
+            "Required — both types, the current and the new one, as \"<current>,<new>\" (e.g. \"lead,customer\"). The current type is checked against the contact's stored type, the new one must equal to_type.",
+        },
         ticket_id: TICKET_FIELD,
       },
-      required: ["id", "revision", "to_type"],
+      required: ["id", "revision", "to_type", "contact_type"],
     },
   },
 
@@ -251,7 +256,7 @@ export const TOOL_DEFINITIONS = [
         contact_type: CONTACT_TYPE_FIELD,
         ticket_id: TICKET_FIELD,
       },
-      required: ["contact_id", "type", "summary"],
+      required: ["contact_id", "type", "summary", "contact_type"],
     },
   },
   {
@@ -288,7 +293,7 @@ export const TOOL_DEFINITIONS = [
         contact_type: CONTACT_TYPE_FIELD,
         ticket_id: TICKET_FIELD,
       },
-      required: ["contact_id", "title"],
+      required: ["contact_id", "title", "contact_type"],
     },
   },
   {
@@ -314,7 +319,7 @@ export const TOOL_DEFINITIONS = [
         contact_type: CONTACT_TYPE_FIELD,
         ticket_id: TICKET_FIELD,
       },
-      required: ["id", "revision"],
+      required: ["id", "revision", "contact_type"],
     },
   },
   {
@@ -375,7 +380,7 @@ export const TOOL_DEFINITIONS = [
         contact_type: CONTACT_TYPE_FIELD,
         ticket_id: TICKET_FIELD,
       },
-      required: ["title"],
+      required: ["title", "contact_type"],
     },
   },
   {
@@ -425,9 +430,10 @@ export const TOOL_DEFINITIONS = [
       properties: {
         id: { type: "string", description: "Task ID" },
         revision: REVISION_FIELD("task"),
+        contact_type: CONTACT_TYPE_FIELD,
         ticket_id: TICKET_FIELD,
       },
-      required: ["id", "revision"],
+      required: ["id", "revision", "contact_type"],
     },
   },
 
