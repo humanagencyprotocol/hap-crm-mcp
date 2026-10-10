@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.4.0
 
 **BREAKING:** changing an existing contact, deal or task now needs its current
 `revision` (`update_contact`, `delete_contact`, `update_deal`,
