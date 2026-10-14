@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.5.0
+
+New reads for the approval card (Suveren AU10: request and customer history).
+Additive — existing calls behave as before.
+
+- `get_activity { id }`: one activity by id, with `contact_id`, the contact's
+  `contact_name` and the `ticket_id` it was written under (if any).
+- `get_timeline` accepts `contact_id` **or** `email` **or** `email_domain`
+  (exact, case-insensitive on the contact's email / its domain; exactly one),
+  an optional `since` (ISO time) and `include_archived` (default false for
+  the email lookups, like `find_contacts`). Each item now carries
+  `contact_id`, `contact_name` and `ticket_id`.
+
 ## 1.4.1
 
 **BREAKING:** every tool that changes something requires `contact_type` (and
