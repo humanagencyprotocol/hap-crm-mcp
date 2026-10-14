@@ -81,6 +81,38 @@ one, and is refused the same way on a stale revision.
   `delete_contact` itself) is refused if the contact is already archived —
   restore it first.
 
+## get_activity and get_timeline — lookup keys and archived contacts
+
+`get_activity { id }` reads one activity by id. Like `get_contact`, it is a
+direct by-id read, not a search, so it is **not** filtered by the linked
+contact's archived status: an activity on an archived contact's timeline is
+still readable this way.
+
+`get_timeline` accepts exactly one of `contact_id`, `email`, or
+`email_domain` — refused, naming how many were given, if that is not exactly
+one:
+
+- `contact_id` is unchanged from before this lookup existed: a direct
+  by-id read of that contact's activities, not filtered by archived status
+  either (an unknown `contact_id` simply yields no activities, not an error).
+- `email` matches `contacts.email` exactly, case-insensitively.
+- `email_domain` matches the part of `contacts.email` after the `@`, exactly
+  and case-insensitively, and can match more than one contact.
+
+Both `email` and `email_domain` resolve through a **search**, so they follow
+`find_contacts`' policy, not `get_contact`'s: archived contacts are excluded
+by default, brought back with `include_archived`. This is a deliberate
+difference from the `contact_id` path above — looking someone up by a
+*shared* key like an email domain should not surface an archived contact's
+history unless asked for, the same way it would not surface them in
+`find_contacts`.
+
+An optional `since` (ISO 8601) keeps only activities at or after that time.
+Every result item carries `contact_id`, the contact's `name`, and
+`ticket_id` — the same field `get_activity` returns, stored on the
+activity's own `receipt_id` column (internal storage name, unchanged; see
+CHANGELOG "v0.7 wire rename").
+
 ## convert_contact — the only way to change a contact's type
 
 `update_contact` never changes a contact's `type` — passing `type` to it is
@@ -121,7 +153,8 @@ the new one must equal `to_type` — an authority must cover both types.
 |---|---|
 | `find_contacts` | contacts, each including its current `revision`; archived contacts excluded unless `include_archived` |
 | `get_contact` | a contact, including its current `revision`; an optional `revision` argument returns that exact historical version instead |
-| `get_timeline` | a contact's activities |
+| `get_activity` | one activity by id, with the linked contact's `name` and `ticket_id` |
+| `get_timeline` | activities for one or more contacts, with each item's contact `name` and `ticket_id` |
 | `get_pipeline` | deals, each including its current `revision`; deals whose contact is archived excluded unless `include_archived` |
 | `get_deal` | a deal, including its current `revision`; an optional `revision` argument returns that exact historical version instead |
 | `list_tasks` | tasks, each including its current `revision` |

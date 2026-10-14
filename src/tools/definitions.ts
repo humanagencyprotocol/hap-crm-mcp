@@ -260,15 +260,38 @@ export const TOOL_DEFINITIONS = [
     },
   },
   {
+    name: "get_activity",
+    description:
+      "Get a single activity by id, including the linked contact's id, name, and ticket_id. Returned " +
+      "regardless of whether the contact is archived (a direct by-id read, like get_contact).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "Activity ID" },
+      },
+      required: ["id"],
+    },
+  },
+  {
     name: "get_timeline",
-    description: "Get the activity timeline for a contact",
+    description:
+      "Get an activity timeline. Exactly one of contact_id, email, or email_domain is required — email and " +
+      "email_domain match contacts.email exactly, case-insensitively (email_domain matches everything after " +
+      "the @, and can match more than one contact). Optional `since` (ISO 8601) keeps only activities at or " +
+      "after that time. Each result includes the contact's id, name, and ticket_id. Archived contacts are " +
+      "excluded from email/email_domain matching by default (include_archived to see them); contact_id is a " +
+      "direct lookup and is never filtered by archived status.",
     inputSchema: {
       type: "object",
       properties: {
         contact_id: { type: "string", description: "Contact ID" },
+        email: { type: "string", description: "Exact contact email to match (case-insensitive)" },
+        email_domain: { type: "string", description: "Contact email domain to match, e.g. \"example.com\" (case-insensitive; can match several contacts)" },
+        since: { type: "string", description: "Optional — ISO 8601 timestamp; only activities at or after this time" },
+        include_archived: { type: "boolean", description: "Include archived contacts when matching by email/email_domain (default: false)" },
         limit: { type: "number", description: "Maximum activities to return (default: 20)" },
       },
-      required: ["contact_id"],
+      required: [],
     },
   },
 
