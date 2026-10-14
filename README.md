@@ -8,7 +8,7 @@ A simple CRM for AI agents, built as an [MCP](https://modelcontextprotocol.io) s
 
 ## What It Does
 
-Four entities. Eighteen tools. One database file.
+Four entities. Twenty-one tools. One database file.
 
 - **Contacts** — people you interact with (customers, leads, partners, vendors)
 - **Activities** — what happened (emails, calls, meetings, notes, purchases)
@@ -60,7 +60,8 @@ DATABASE_URL=postgres://user:pass@host:5432/mydb npx @humanagencyp/crm-mcp@lates
 | Tool | Description |
 |------|-------------|
 | `log_activity` | Log an interaction (email, call, meeting, note, purchase) |
-| `get_timeline` | Get activity history for a contact |
+| `get_activity` | One activity by id, including the linked contact's name and `ticket_id` — readable even if the contact is archived |
+| `get_timeline` | Activity history by `contact_id`, `email`, or `email_domain` (exactly one); optional `since`; each item includes contact name and `ticket_id` |
 
 ### Deals
 
@@ -121,7 +122,7 @@ The connector has a switch, `CRM_MODE`:
 | `simulation` (default) | the built-in simulated CRM (the database above) | available |
 | `live` | the company's real CRM | no adapter in 0.x — **every call is refused**, reads included, with a clear message; nothing is read or changed |
 
-The point: a three-week test runs on exactly this connector, its 13 tools and its
+The point: a three-week test runs on exactly this connector, its 19 tools and its
 HAP `customers` profile. Only the system behind it is simulated, so the tickets
 issued during the test are the same tickets that will be issued live. Going live
 = switch the mode and connect the real system; mandates and agent setup stay as

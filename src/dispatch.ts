@@ -8,7 +8,7 @@ import { LIVE_NOT_AVAILABLE, type CrmMode } from "./mode.js";
 import {
   create_contact, find_contacts, get_contact, update_contact, delete_contact, restore_contact, convert_contact,
 } from "./tools/contacts.js";
-import { log_activity, get_timeline } from "./tools/activities.js";
+import { log_activity, get_activity, get_timeline } from "./tools/activities.js";
 import { create_deal, update_deal, get_deal, get_pipeline } from "./tools/deals.js";
 import { create_task, list_tasks, get_task, complete_task } from "./tools/tasks.js";
 import { export_crm } from "./tools/export.js";
@@ -48,6 +48,7 @@ async function runTool(db: Db, name: string, args: Record<string, any>): Promise
     case "restore_contact": return restore_contact(db, args);
     case "convert_contact": return convert_contact(db, args);
     case "log_activity": return log_activity(db, args);
+    case "get_activity": return get_activity(db, args);
     case "get_timeline": return get_timeline(db, args);
     case "create_deal": return create_deal(db, args);
     case "update_deal": return update_deal(db, args);
