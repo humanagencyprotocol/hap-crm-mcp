@@ -213,6 +213,20 @@ export function resolveCompany(env: NodeJS.ProcessEnv = process.env): Company | 
   return path ? loadCompanyFile(path) : null;
 }
 
+/**
+ * The "local" live adapter's database location: CRM_LOCAL_DATABASE_URL if set
+ * (a Postgres connection string or a SQLite file path — same rules as
+ * DATABASE_URL below), else `<HAP_DATA_DIR ?? ~/.hap>/crm-local.sqlite`.
+ * Deliberately separate from the simulation's `crm.db`: a live CRM and a
+ * simulated one must never be able to cross-contaminate.
+ */
+export function resolveLocalDatabaseUrl(env: NodeJS.ProcessEnv = process.env): string {
+  const explicit = env.CRM_LOCAL_DATABASE_URL?.trim();
+  if (explicit) return explicit;
+  const dataDir = env.HAP_DATA_DIR ?? join(homedir(), ".hap");
+  return join(dataDir, "crm-local.sqlite");
+}
+
 const INSERT_CONTACT = `INSERT INTO contacts (id, name, email, phone, company, role, type, stage, tags, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
 function contactRows(company: Company): any[][] {
@@ -512,8 +526,16 @@ function maybeBackupSqlite(dbPath: string): void {
   }
 }
 
-export async function createDb(company: Company | null = resolveCompany()): Promise<Db> {
-  const databaseUrl = process.env.DATABASE_URL ?? "";
+/**
+ * `databaseUrlOverride` lets a caller (the live "local" adapter) point this at
+ * a different database than DATABASE_URL/the default `crm.db` — e.g.
+ * `resolveLocalDatabaseUrl()`'s `crm-local.sqlite` — while reusing every bit
+ * of SQLite/Postgres wiring, migration and backfill below. No daily backup for
+ * an override: that is simulation's own convenience default, not something a
+ * live adapter's caller should get for free.
+ */
+export async function createDb(company: Company | null = resolveCompany(), databaseUrlOverride?: string): Promise<Db> {
+  const databaseUrl = databaseUrlOverride ?? process.env.DATABASE_URL ?? "";
 
   if (databaseUrl.startsWith("postgres://") || databaseUrl.startsWith("postgresql://")) {
     console.error("[crm-mcp] using Postgres");
@@ -523,15 +545,19 @@ export async function createDb(company: Company | null = resolveCompany()): Prom
   // SQLite path — honor HAP_DATA_DIR so docker (with a mounted /app/data) and
   // local dev (~/.hap) write to the same place the gateway uses. The gateway
   // injects HAP_DATA_DIR into the child env when spawning this MCP server.
-  // Only create the data directory when the default path is actually used — an
-  // explicit DATABASE_URL must not leave an empty ~/.hap behind.
   let dbPath = databaseUrl;
   if (!dbPath) {
     const hapDir = process.env.HAP_DATA_DIR ?? join(homedir(), ".hap");
-    if (!existsSync(hapDir)) mkdirSync(hapDir, { recursive: true });
     dbPath = join(hapDir, "crm.db");
   }
-  maybeBackupSqlite(dbPath);
+  // Only create the directory when it does not already exist — an explicit
+  // DATABASE_URL (tests) almost always points somewhere that already exists
+  // (e.g. the OS tmp dir), so this does not leave stray empty directories
+  // behind for that case; it only matters for the default path and for an
+  // override (e.g. the local adapter's own data dir) on first run.
+  const dir = dbPath.includes("/") ? dbPath.slice(0, dbPath.lastIndexOf("/")) : "";
+  if (dir && !existsSync(dir)) mkdirSync(dir, { recursive: true });
+  if (!databaseUrlOverride) maybeBackupSqlite(dbPath);
 
   console.error(`[crm-mcp] using SQLite at ${dbPath}`);
   return createSqliteDb(dbPath, company);

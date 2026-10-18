@@ -4,8 +4,8 @@
  *
  *   crm-mcp export   everything needed to line up ticket -> effect (changes + refusals)
  */
-import { createDb, type Db } from "./db.js";
-import { getMode } from "./mode.js";
+import { createDb, resolveLocalDatabaseUrl, type Db } from "./db.js";
+import { getMode, getLiveAdapter } from "./mode.js";
 
 export async function exportRecord(db: Db, mode = getMode()) {
   return {
@@ -27,8 +27,11 @@ export async function runCli(argv: string[]): Promise<number> {
   const [cmd] = argv;
   try {
     if (cmd === "export") {
-      const db = await createDb();
-      process.stdout.write(JSON.stringify(await exportRecord(db), null, 2) + "\n");
+      const mode = getMode();
+      const adapter = mode === "live" ? getLiveAdapter() : undefined;
+      const usingLocalAdapter = mode === "live" && adapter === "local";
+      const db = usingLocalAdapter ? await createDb(null, resolveLocalDatabaseUrl()) : await createDb();
+      process.stdout.write(JSON.stringify(await exportRecord(db, mode), null, 2) + "\n");
       await db.close();
       return 0;
     }

@@ -120,7 +120,7 @@ The connector has a switch, `CRM_MODE`:
 | Mode | What answers | Status |
 |---|---|---|
 | `simulation` (default) | the built-in simulated CRM (the database above) | available |
-| `live` | the company's real CRM | no adapter in 0.x — **every call is refused**, reads included, with a clear message; nothing is read or changed |
+| `live` | a real CRM, through a live adapter | needs `CRM_LIVE_ADAPTER`; without one (or with an unrecognized value) **every call is refused**, reads included, with a clear message — nothing is read or changed |
 
 The point: a three-week test runs on exactly this connector, its 19 tools and its
 HAP `customers` profile. Only the system behind it is simulated, so the tickets
@@ -128,6 +128,22 @@ issued during the test are the same tickets that will be issued live. Going live
 = switch the mode and connect the real system; mandates and agent setup stay as
 they are. An unknown `CRM_MODE` value stops the server at start rather than
 guessing.
+
+### Live mode — adapter `local`
+
+`CRM_MODE=live CRM_LIVE_ADAPTER=local` runs the exact same 19 CRM tools against
+a real, separate database on this machine — `<HAP_DATA_DIR>/crm-local.sqlite`
+(override with `CRM_LOCAL_DATABASE_URL`, including a `postgres://` connection
+string). It is deliberately not a second implementation: every create, read,
+update and delete works exactly as it does in simulation, with the same change
+and refusal recording — only the database file differs, so a live CRM and the
+simulation can never cross-contaminate. `load_simulation` and `clear_simulation`
+stay refused (this is test-data tooling for the simulation only). Other live
+adapters (HubSpot, ...) plug into the same `CRM_MODE=live` switch via a
+different `CRM_LIVE_ADAPTER` value — `local` is the first, not a special case.
+
+`crm-mcp export` follows the same switch: with `CRM_MODE=live CRM_LIVE_ADAPTER=local`
+set, it exports the local database instead of the simulation's.
 
 **Company file.** `CRM_COMPANY_FILE=/path/to/company.json` seeds an empty
 database with contacts — one `customer`-type contact per entry in the file's

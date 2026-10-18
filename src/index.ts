@@ -7,9 +7,9 @@ import {
   CallToolRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 
-import { createDb } from "./db.js";
+import { createDb, resolveLocalDatabaseUrl } from "./db.js";
 import { callTool } from "./dispatch.js";
-import { getMode } from "./mode.js";
+import { getMode, getLiveAdapter } from "./mode.js";
 import { runCli } from "./cli.js";
 import { TOOL_DEFINITIONS } from "./tools/definitions.js";
 
@@ -25,8 +25,18 @@ async function main() {
   }
 
   const mode = getMode();
-  const db = await createDb();
-  console.error(`[crm-mcp] mode: ${mode}`);
+  const adapter = mode === "live" ? getLiveAdapter() : undefined;
+  const usingLocalAdapter = mode === "live" && adapter === "local";
+
+  // Live mode never seeds from CRM_COMPANY_FILE — that is simulation's own
+  // test-data convenience. The local adapter's database is a separate file
+  // (or connection string), selected via createDb's override so it reuses
+  // every bit of the simulation's SQLite/Postgres wiring instead of a second
+  // implementation.
+  const db = usingLocalAdapter
+    ? await createDb(null, resolveLocalDatabaseUrl())
+    : await createDb();
+  console.error(`[crm-mcp] mode: ${mode}${adapter ? ` (adapter: ${adapter})` : ""}`);
 
   const server = new Server(
     { name: "crm", version: "1.1.2" },
