@@ -4,7 +4,7 @@
  */
 import { randomUUID } from "crypto";
 import type { Db } from "./db.js";
-import { LIVE_NOT_AVAILABLE, type CrmMode } from "./mode.js";
+import { LIVE_NOT_AVAILABLE, getLiveAdapter, type CrmMode } from "./mode.js";
 import {
   create_contact, find_contacts, get_contact, update_contact, delete_contact, restore_contact, convert_contact,
 } from "./tools/contacts.js";
@@ -37,6 +37,21 @@ export const CHANGE_TOOLS = new Set([
   "load_simulation",
   "clear_simulation",
 ]);
+
+/**
+ * Test-data tooling that only makes sense against the built-in simulation —
+ * refused in live mode (any adapter) without touching the database, naming
+ * what the refusal is about rather than failing on a missing table or a
+ * confusing downstream error.
+ */
+export const SIMULATION_ONLY_TOOLS = new Set(["load_simulation", "clear_simulation"]);
+
+function simulationOnlyRefusal(name: string): string {
+  return (
+    `Refused: "${name}" is simulation-only test-data tooling and is not available in live mode. ` +
+    "Nothing was read or changed."
+  );
+}
 
 async function runTool(db: Db, name: string, args: Record<string, any>): Promise<unknown> {
   switch (name) {
@@ -105,13 +120,30 @@ function describeChange(name: string, args: Record<string, any>, result: unknown
  * write tool attaches to its own return value — see change-meta.ts). A call
  * the connector refuses AFTER the gateway let it through is recorded in
  * `refusals` with the same ticket_id — that is the trace of a ticket whose
- * action never happened. In live mode nothing runs and nothing is recorded
- * locally: there is no local system to have refused anything. Reads record
- * nothing either way. Both tables store the id in their existing receipt_id
- * column (internal storage name, unchanged).
+ * action never happened. Reads record nothing either way. Both tables store
+ * the id in their existing receipt_id column (internal storage name,
+ * unchanged).
+ *
+ * In live mode, `db` must already be the right database for the call:
+ * no adapter installed (or an unrecognized one) refuses everything up front
+ * and touches nothing — there is no local system to have refused anything, so
+ * nothing is recorded either. With the "local" adapter, `db` is the local
+ * adapter's own database (see db.ts's `resolveLocalDatabaseUrl`) and every
+ * tool below runs against it exactly as it runs against the simulation,
+ * except the simulation-only test-data tools, which stay refused.
  */
-export async function callTool(db: Db, mode: CrmMode, name: string, args: Record<string, any>): Promise<unknown> {
-  if (mode === "live") throw new Error(LIVE_NOT_AVAILABLE);
+export async function callTool(
+  db: Db,
+  mode: CrmMode,
+  name: string,
+  args: Record<string, any>,
+  env: NodeJS.ProcessEnv = process.env
+): Promise<unknown> {
+  if (mode === "live") {
+    const adapter = getLiveAdapter(env);
+    if (adapter !== "local") throw new Error(LIVE_NOT_AVAILABLE);
+    if (SIMULATION_ONLY_TOOLS.has(name)) throw new Error(simulationOnlyRefusal(name));
+  }
   const ticketId = typeof args.ticket_id === "string" ? args.ticket_id : null;
   try {
     const result = await runTool(db, name, args);
