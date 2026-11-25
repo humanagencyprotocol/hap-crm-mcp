@@ -21,7 +21,7 @@ Every write operation is gated through the HAP `customers` profile — your agen
 
 ## Quick Start
 
-### With HAP Gateway
+### With Suveren's gateway
 
 The CRM is available as a built-in integration. Go to **Integrations** in the gateway UI, activate **CRM**, and you're done. No configuration needed.
 
